@@ -51,14 +51,14 @@ with st.sidebar:
 
 # Route to the appropriate page
 if choice == "Home":
-    from pages.home import show_home
+    from views.home import show_home
     show_home()
 elif choice == "Chat":
-    from pages.chat import show_chat
+    from views.chat import show_chat
     show_chat()
 elif choice == "Groups":
-    from pages.groups import show_groups
+    from views.groups import show_groups
     show_groups()
 elif choice == "Profile":
-    from pages.profile import show_profile
+    from views.profile import show_profile
     show_profile()
