@@ -3,33 +3,27 @@ from datetime import datetime
 from pymongo import MongoClient
 from passlib.hash import bcrypt
 from bson import ObjectId
-import bleach
 
-# Load environment variables
-MONGO_URI = os.getenv("MONGO_URI")
+# Load env
+MONGO_URI     = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
-client = MongoClient(MONGO_URI)
-db = client[MONGO_DB_NAME]
+client        = MongoClient(MONGO_URI)
+db            = client[MONGO_DB_NAME]
 
 # Collections
-users_coll = db["users"]
+users_coll    = db["users"]
 messages_coll = db["messages"]
-groups_coll = db["groups"]
-invites_coll = db["invitations"]
-files_coll = db["files"]
-notes_coll = db["notifications"]
+groups_coll   = db["groups"]
+invites_coll  = db["invitations"]
+files_coll    = db["files"]
+notes_coll    = db["notifications"]
 
 def init_db():
-    # Create indexes for efficient querying
     users_coll.create_index("username", unique=True)
     groups_coll.create_index("name", unique=True)
     notes_coll.create_index([("user", 1), ("read", 1)])
-    messages_coll.create_index([("sender", 1), ("receiver", 1)])
-    messages_coll.create_index([("group", 1)])
-    groups_coll.create_index([("members", 1)])
-    messages_coll.create_index([("content", "text")])  # For text search
+    messages_coll.create_index([("content", "text")])  # For search functionality
 
-    # Create admin user if not exists
     admin_u = os.getenv("ADMIN_USERNAME")
     admin_p = os.getenv("ADMIN_PASSWORD")
     if not users_coll.find_one({"username": admin_u}):
@@ -42,7 +36,6 @@ def init_db():
             "created_at": datetime.utcnow()
         })
 
-    # Create default public group if not exists
     if not groups_coll.find_one({"name": "3D Chat"}):
         groups_coll.insert_one({
             "name": "3D Chat",
@@ -56,10 +49,10 @@ def init_db():
 def create_user(username, password, profile):
     pw = bcrypt.hash(password)
     users_coll.insert_one({
-        "username": bleach.clean(username),
+        "username": username,
         "password_hash": pw,
         "is_admin": False,
-        "profile": {k: bleach.clean(v) if isinstance(v, str) else v for k, v in profile.items()},
+        "profile": profile,
         "visible_fields": list(profile.keys()),
         "created_at": datetime.utcnow()
     })
@@ -71,32 +64,28 @@ def check_password(h, p):
     return bcrypt.verify(p, h)
 
 def update_profile(username, profile, visible_fields):
-    profile = {k: bleach.clean(v) if isinstance(v, str) else v for k, v in profile.items()}
     users_coll.update_one(
         {"username": username},
         {"$set": {"profile": profile, "visible_fields": visible_fields}}
     )
 
-def update_password(username, new_password):
-    hashed = bcrypt.hash(new_password)
-    users_coll.update_one({"username": username}, {"$set": {"password_hash": hashed}})
-
-# File storage with validation
+# File storage
 def store_file(buf: io.BytesIO, name: str) -> str:
-    if not name.lower().endswith(('.png', '.jpg', '.jpeg', '.pdf')):
-        raise ValueError("Only PNG, JPG, JPEG, and PDF files are allowed")
-    if buf.getbuffer().nbytes > 5 * 1024 * 1024:  # 5MB limit
-        raise ValueError("File size exceeds 5MB limit")
     res = files_coll.insert_one({"name": name, "content": buf.getvalue(), "ts": datetime.utcnow()})
     return str(res.inserted_id)
 
 def get_file(file_id: str):
     return files_coll.find_one({"_id": ObjectId(file_id)})
 
-# Messaging with sanitization and read status
+# Messaging
 def create_message(sender, receiver=None, group=None, content="", file_id=None):
-    content = bleach.clean(content)
-    doc = {"sender": sender, "content": content, "timestamp": datetime.utcnow(), "file_id": file_id, "read": False if receiver else True}
+    doc = {
+        "sender": sender,
+        "content": content,
+        "timestamp": datetime.utcnow(),
+        "file_id": file_id,
+        "read": False  # Default for private messages
+    }
     if receiver:
         doc["receiver"] = receiver
         notes_coll.insert_one({"user": receiver, "msg": doc, "read": False, "ts": datetime.utcnow()})
@@ -104,44 +93,42 @@ def create_message(sender, receiver=None, group=None, content="", file_id=None):
         doc["group"] = group
     messages_coll.insert_one(doc)
 
-def get_private_conversation(u1, u2, skip=0, limit=50, since=None):
-    query = {"$or": [{"sender": u1, "receiver": u2}, {"sender": u2, "receiver": u1}]}
-    if since:
-        query["timestamp"] = {"$gt": since}
-    return list(messages_coll.find(query).sort("timestamp", 1).skip(skip).limit(limit))
+def get_private_conversation(u1, u2, skip=0, limit=50):
+    return list(messages_coll.find(
+        {"$or": [{"sender": u1, "receiver": u2}, {"sender": u2, "receiver": u1}]}
+    ).sort("timestamp", -1).skip(skip).limit(limit))[::-1]  # Reverse for chronological order
 
 def get_group_conversation(group_name, skip=0, limit=50):
-    return list(messages_coll.find({"group": group_name}).sort("timestamp", 1).skip(skip).limit(limit))
+    return list(messages_coll.find({"group": group_name}).sort("timestamp", -1).skip(skip).limit(limit))[::-1]
 
-def delete_message(message_id):
-    messages_coll.delete_one({"_id": ObjectId(message_id)})
+def delete_message(message_id, sender):
+    messages_coll.delete_one({"_id": ObjectId(message_id), "sender": sender})
 
-def edit_message(message_id, new_content):
-    message = messages_coll.find_one({"_id": ObjectId(message_id)})
-    if message:
-        sent_time = message["timestamp"]
-        if (datetime.utcnow() - sent_time).total_seconds() > 300:  # 5 minutes
-            raise ValueError("Message edit time limit exceeded")
-        messages_coll.update_one(
-            {"_id": ObjectId(message_id)},
-            {"$set": {"content": bleach.clean(new_content), "edited": True}}
-        )
-    else:
-        raise ValueError("Message not found")
+def edit_message(message_id, sender, new_content):
+    messages_coll.update_one(
+        {"_id": ObjectId(message_id), "sender": sender},
+        {"$set": {"content": new_content, "edited": True, "edited_at": datetime.utcnow()}}
+    )
 
-def mark_messages_read(u, p):
+def mark_messages_read(username, partner):
     messages_coll.update_many(
-        {"sender": p, "receiver": u, "read": False},
+        {"sender": partner, "receiver": username, "read diaper": False},
         {"$set": {"read": True}}
     )
 
-def search_messages(query, u, p=None, g=None):
+def search_messages(query, username, p=None, g=None):
     if p:
         return list(messages_coll.find(
-            {"$or": [{"sender": u, "receiver": p}, {"sender": p, "receiver": u}], "$text": {"$search": query}}
-        ).sort([("score", {"$meta": "textScore"})]))
+            {
+                "$or": [{"sender": username, "receiver": p}, {"sender": p, "receiver": username}],
+                "$text": {"$search": query}
+            }
+        ).sort("timestamp", -1))
     elif g:
-        return list(messages_coll.find({"group": g, "$text": {"$search": query}}).sort([("score", {"$meta": "textScore"})]))
+        return list(messages_coll.find(
+            {"group": g, "$text": {"$search": query}}
+        ).sort("timestamp", -1))
+    return []
 
 # Groups
 def list_rooms(username):
@@ -157,10 +144,10 @@ def get_user_groups(username):
     return list(groups_coll.find({"members": username}))
 
 def user_group_count(username):
+    """Count how many groups the user created"""
     return groups_coll.count_documents({"creator": username})
 
 def create_group(name, creator):
-    name = bleach.clean(name)
     groups_coll.insert_one({
         "name": name,
         "creator": creator,
@@ -178,9 +165,6 @@ def get_user_invites(username):
 def accept_invite(username, group_name):
     groups_coll.update_one({"name": group_name}, {"$addToSet": {"members": username}})
     invites_coll.delete_one({"group": group_name, "invited_user": username})
-
-def remove_member_from_group(group_name, member):
-    groups_coll.update_one({"name": group_name}, {"$pull": {"members": member}})
 
 # Notifications
 def get_notifications(username):
