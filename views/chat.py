@@ -9,6 +9,10 @@ from database import (
 import emoji
 from datetime import datetime
 import time
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def show_chat():
     u = st.session_state.username
@@ -31,6 +35,7 @@ def show_chat():
         try:
             st.session_state.all_users = [doc["username"] for doc in __import__("database").users_coll.find({"username": {"$ne": u}})]
         except Exception as e:
+            logging.error(f"Error fetching users: {e}")
             st.error(f"Error fetching users: {e}")
             st.session_state.all_users = []
     if "chatted_users" not in st.session_state:
@@ -45,6 +50,7 @@ def show_chat():
                 if msg.get("receiver") and msg["receiver"] != u:
                     st.session_state.chatted_users.add(msg["receiver"])
         except Exception as e:
+            logging.error(f"Error fetching chatted users: {e}")
             st.error(f"Error fetching chatted users: {e}")
     if "last_message_time" not in st.session_state:
         st.session_state.last_message_time = datetime.utcnow()
@@ -54,6 +60,8 @@ def show_chat():
         st.session_state.auto_refresh = True
     if "last_refresh" not in st.session_state:
         st.session_state.last_refresh = time.time()
+    if "is_sending" not in st.session_state:
+        st.session_state.is_sending = False
 
     # Secondary sidebar for chat selection
     with st.sidebar:
@@ -96,6 +104,7 @@ def show_chat():
                 st.session_state.editing_message_id = None
                 st.session_state.cached_messages = []
                 st.session_state.last_message_time = datetime.utcnow()
+                st.session_state.is_sending = False
                 st.rerun()
 
         # Dropdown for new chats with confirmation button
@@ -113,6 +122,7 @@ def show_chat():
                 st.session_state.cached_messages = []
                 st.session_state.last_message_time = datetime.utcnow()
                 st.session_state.chatted_users.add(new_user)
+                st.session_state.is_sending = False
                 st.rerun()
 
         # Group chats
@@ -126,16 +136,20 @@ def show_chat():
                     st.session_state.editing_message_id = None
                     st.session_state.cached_messages = []
                     st.session_state.last_message_time = datetime.utcnow()
+                    st.session_state.is_sending = False
                     st.rerun()
         except Exception as e:
+            logging.error(f"Error fetching groups: {e}")
             st.error(f"Error fetching groups: {e}")
 
     mode = st.session_state.chat_mode
 
-    # Auto-refresh logic
+    # Auto-refresh logic (paused during sending)
     st.checkbox("Enable Auto-Refresh", value=st.session_state.auto_refresh, key="auto_refresh_toggle")
     st.session_state.auto_refresh = st.session_state.auto_refresh_toggle
-    if st.session_state.auto_refresh and time.time() - st.session_state.last_refresh >= 5:
+    if (st.session_state.auto_refresh and 
+        not st.session_state.is_sending and 
+        time.time() - st.session_state.last_refresh >= 5):
         st.session_state.last_refresh = time.time()
         st.rerun()
 
@@ -148,12 +162,14 @@ def show_chat():
         try:
             mark_messages_read(u, p)
         except Exception as e:
+            logging.error(f"Error marking messages read: {e}")
             st.error(f"Error marking messages read: {e}")
 
         # Refresh button
         if st.button("Refresh Chat", key="refresh_private_chat"):
             st.session_state.cached_messages = []
             st.session_state.last_message_time = datetime.utcnow()
+            st.session_state.is_sending = False
             st.rerun()
 
         search_query = st.text_input("Search messages", key="search_input_private", placeholder="🔍 Type to search...")
@@ -161,7 +177,7 @@ def show_chat():
             if search_query:
                 messages = search_messages(search_query, u, p=p)
                 st.session_state.cached_messages = messages
-                st.session_state.last_message_time = datetime.utcnow()
+                st.session_state.last_message_time = datetime.utcnow() if not messages else max(m["timestamp"] for m in messages)
             else:
                 # Fetch new messages since last timestamp
                 new_messages = get_new_private_messages(u, p, st.session_state.last_message_time)
@@ -175,6 +191,7 @@ def show_chat():
                         st.session_state.last_message_time = max(m["timestamp"] for m in st.session_state.cached_messages)
                 messages = st.session_state.cached_messages
         except Exception as e:
+            logging.error(f"Error fetching messages: {e}")
             st.error(f"Error fetching messages: {e}")
             messages = []
 
@@ -186,6 +203,7 @@ def show_chat():
                     try:
                         sender_display = get_user(m["sender"])["profile"].get("display_name", m["sender"])
                     except Exception as e:
+                        logging.error(f"Error fetching user: {e}")
                         st.error(f"Error fetching user: {e}")
                         sender_display = m["sender"]
                     st.markdown(f"**{sender_display}**")
@@ -211,6 +229,7 @@ def show_chat():
                                         mime="image/jpeg"
                                     )
                             except Exception as e:
+                                logging.error(f"Error fetching file: {e}")
                                 st.error(f"Error fetching file: {e}")
                         new_content = st.text_input("Edit message", value=m["content"], key=f"edit_{m['_id']}")
                         if st.button("Save", key=f"save_{m['_id']}"):
@@ -220,6 +239,7 @@ def show_chat():
                                 st.session_state.cached_messages = []
                                 st.rerun()
                             except Exception as e:
+                                logging.error(f"Error editing message: {e}")
                                 st.error(f"Error editing message: {e}")
                     else:
                         # Normal display
@@ -247,6 +267,7 @@ def show_chat():
                                         mime="image/jpeg"
                                     )
                             except Exception as e:
+                                logging.error(f"Error fetching file: {e}")
                                 st.error(f"Error fetching file: {e}")
                         if m.get("reactions"):
                             st.markdown(" ".join(f"{r} {c}" for r, c in m["reactions"].items()))
@@ -265,6 +286,7 @@ def show_chat():
                                         st.session_state.cached_messages = []
                                         st.rerun()
                                     except Exception as e:
+                                        logging.error(f"Error deleting message: {e}")
                                         st.error(f"Error deleting message: {e}")
                             with col3:
                                 reaction = st.selectbox("React", ["", "👍", "❤️", "😂"], key=f"react_{m['_id']}")
@@ -274,6 +296,7 @@ def show_chat():
                                         st.session_state.cached_messages = []
                                         st.rerun()
                                     except Exception as e:
+                                        logging.error(f"Error adding reaction: {e}")
                                         st.error(f"Error adding reaction: {e}")
 
         if not search_query and len(messages) == 50:
@@ -286,17 +309,32 @@ def show_chat():
         up = st.file_uploader("Attachment", type=["png","jpg","jpeg","pdf"], key="private_upload")
         if txt or up:
             try:
+                st.session_state.is_sending = True
                 fid = None
                 if up:
                     fid = store_file(io.BytesIO(up.getvalue()), up.name)
+                # Create message
                 create_message(u, receiver=p, content=txt if txt is not None else "", file_id=fid)
+                # Append new message to cache
+                new_msg = {
+                    "sender": u,
+                    "receiver": p,
+                    "content": txt if txt is not None else "",
+                    "timestamp": datetime.utcnow(),
+                    "file_id": fid,
+                    "read": False,
+                    "reactions": {}
+                }
+                st.session_state.cached_messages.append(new_msg)
+                st.session_state.last_message_time = new_msg["timestamp"]
                 if p not in st.session_state.chatted_users:
                     st.session_state.chatted_users.add(p)
-                st.session_state.cached_messages = []
-                st.session_state.last_message_time = datetime.utcnow()
+                st.session_state.is_sending = False
                 st.rerun()
             except Exception as e:
-                st.error(f"Error sending message: {e}")
+                st.session_state.is_sending = False
+                logging.error(f"Error sending message: {e}")
+                st.error(f"Failed to send message: {e}")
 
     else:  # Group mode
         g = st.session_state.chat_group
@@ -308,6 +346,7 @@ def show_chat():
         if st.button("Refresh Chat", key="refresh_group_chat"):
             st.session_state.cached_messages = []
             st.session_state.last_message_time = datetime.utcnow()
+            st.session_state.is_sending = False
             st.rerun()
 
         search_query = st.text_input("Search messages", key="search_input_group", placeholder="🔍 Type to search...")
@@ -315,7 +354,7 @@ def show_chat():
             if search_query:
                 messages = search_messages(search_query, u, g=g)
                 st.session_state.cached_messages = messages
-                st.session_state.last_message_time = datetime.utcnow()
+                st.session_state.last_message_time = datetime.utcnow() if not messages else max(m["timestamp"] for m in messages)
             else:
                 # Fetch new messages since last timestamp
                 new_messages = get_new_group_messages(g, st.session_state.last_message_time)
@@ -329,6 +368,7 @@ def show_chat():
                         st.session_state.last_message_time = max(m["timestamp"] for m in st.session_state.cached_messages)
                 messages = st.session_state.cached_messages
         except Exception as e:
+            logging.error(f"Error fetching messages: {e}")
             st.error(f"Error fetching messages: {e}")
             messages = []
 
@@ -337,6 +377,7 @@ def show_chat():
                 try:
                     sender_display = get_user(m["sender"])["profile"].get("display_name", m["sender"])
                 except Exception as e:
+                    logging.error(f"Error fetching user: {e}")
                     st.error(f"Error fetching user: {e}")
                     sender_display = m["sender"]
                 st.markdown(f"**{sender_display}**")
@@ -362,6 +403,7 @@ def show_chat():
                                     mime="image/jpeg"
                                 )
                         except Exception as e:
+                            logging.error(f"Error fetching file: {e}")
                             st.error(f"Error fetching file: {e}")
                     new_content = st.text_input("Edit message", value=m["content"], key=f"edit_{m['_id']}")
                     if st.button("Save", key=f"save_{m['_id']}"):
@@ -371,6 +413,7 @@ def show_chat():
                             st.session_state.cached_messages = []
                             st.rerun()
                         except Exception as e:
+                            logging.error(f"Error editing message: {e}")
                             st.error(f"Error editing message: {e}")
                 else:
                     # Normal display
@@ -398,6 +441,7 @@ def show_chat():
                                     mime="image/jpeg"
                                 )
                         except Exception as e:
+                            logging.error(f"Error fetching file: {e}")
                             st.error(f"Error fetching file: {e}")
                     if m.get("reactions"):
                         st.markdown(" ".join(f"{r} {c}" for r, c in m["reactions"].items()))
@@ -414,6 +458,7 @@ def show_chat():
                                     st.session_state.cached_messages = []
                                     st.rerun()
                                 except Exception as e:
+                                    logging.error(f"Error deleting message: {e}")
                                     st.error(f"Error deleting message: {e}")
                         with col3:
                             reaction = st.selectbox("React", ["", "👍", "❤️", "😂"], key=f"react_{m['_id']}")
@@ -423,6 +468,7 @@ def show_chat():
                                     st.session_state.cached_messages = []
                                     st.rerun()
                                 except Exception as e:
+                                    logging.error(f"Error adding reaction: {e}")
                                     st.error(f"Error adding reaction: {e}")
 
         if not search_query and len(messages) == 50:
@@ -435,12 +481,27 @@ def show_chat():
         up = st.file_uploader("Attachment", type=["png","jpg","jpeg","pdf"], key="group_upload")
         if txt or up:
             try:
+                st.session_state.is_sending = True
                 fid = None
                 if up:
                     fid = store_file(io.BytesIO(up.getvalue()), up.name)
+                # Create message
                 create_message(u, group=g, content=txt if txt is not None else "", file_id=fid)
-                st.session_state.cached_messages = []
-                st.session_state.last_message_time = datetime.utcnow()
+                # Append new message to cache
+                new_msg = {
+                    "sender": u,
+                    "group": g,
+                    "content": txt if txt is not None else "",
+                    "timestamp": datetime.utcnow(),
+                    "file_id": fid,
+                    "read": False,
+                    "reactions": {}
+                }
+                st.session_state.cached_messages.append(new_msg)
+                st.session_state.last_message_time = new_msg["timestamp"]
+                st.session_state.is_sending = False
                 st.rerun()
             except Exception as e:
-                st.error(f"Error sending message: {e}")
+                st.session_state.is_sending = False
+                logging.error(f"Error sending group message: {e}")
+                st.error(f"Failed to send group message: {e}")
