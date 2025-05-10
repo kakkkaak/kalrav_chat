@@ -7,44 +7,38 @@ from database import init_db
 st.set_page_config(
     page_title="Big Boss Chat", 
     layout="wide",
-    initial_sidebar_state="collapsed"  # Start with sidebar collapsed
+    initial_sidebar_state="expanded"  # Start with sidebar visible
 )
 
-# Even more aggressive sidebar hiding
+# Adjusted CSS to hide Streamlit's default elements but keep custom sidebar
 st.markdown("""
 <style>
-    /* Hide the default sidebar completely */
-    .css-1d391kg, .css-12aokuf, .css-15tx938 {display: none;}
-    
-    /* Hide the top file navigation sidebar */
-    [data-testid="collapsedControl"] {display: none !important;}
-    
     /* Hide hamburger menu */
     #MainMenu {visibility: hidden;}
     
     /* Hide footer */
     footer {visibility: hidden;}
     
-    /* Hide "Deploy", "Manage app", "Rerun" buttons at the end of output */
-    .stDeployButton {display:none;}
+    /* Hide "Deploy", "Manage app", "Rerun" buttons */
+    .stDeployButton {display: none;}
     
-    /* Adjust padding */
+    /* Adjust padding for main content */
     .main .block-container {padding-top: 1rem;}
     
-    /* Additional class to target sidebar */
-    header[data-testid="stHeader"] {visibility: hidden;}
+    /* Ensure custom sidebar is visible */
+    [data-testid="stSidebar"] {display: block !important;}
 </style>
 """, unsafe_allow_html=True)
 
 load_dotenv()
 init_db()
 
-# Create our own custom sidebar container
+# Custom sidebar navigation
 if "username" not in st.session_state:
     login()
     st.stop()
 
-# After login: show our custom navigation
+# Show custom sidebar after login
 with st.sidebar:
     st.title("Big Boss Chat")
     choice = st.radio("Navigation", ["Home", "Chat", "Groups", "Profile"])
