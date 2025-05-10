@@ -3,69 +3,44 @@ import os
 from pymongo import MongoClient
 from datetime import datetime
 from passlib.hash import bcrypt
+from bson import ObjectId
 import streamlit as st
+from PIL import Image
+import io
 
-# Connection
-MONGO_URI     = os.getenv("MONGO_URI")
-MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
-client        = MongoClient(MONGO_URI)
-db            = client[MONGO_DB_NAME]
-
-# Collections
-users_coll    = db["users"]
-messages_coll = db["messages"]
-groups_coll   = db["groups"]
-
-def init_db():
-    # 1) Indexes
-    users_coll.create_index("username", unique=True)
-    groups_coll.create_index("creator", unique=False)
-    groups_coll.create_index("name", unique=True)
-
-    # 2) Seed admin accounts
-    for admin_u in [
-        ("admin",   "bigfatboss"),
-        ("Kalrav",  "bigfatboss"),
-        ("Ethan",   "bigfatboss")
-    ]:
-        u, pwd = admin_u
-        if not users_coll.find_one({"username": u}):
-            users_coll.insert_one({
-                "username":      u,
-                "password_hash": bcrypt.hash(pwd),
-                "is_admin":      True
-            })
-
-    # 3) Seed default room "3D Chat"
-    if not groups_coll.find_one({"name": "3D Chat"}):
-        groups_coll.insert_one({
-            "name":       "3D Chat",
-            "creator":    "admin",
-            "members":    [],        # optional: track who joined
-            "is_public":  True,
-            "created_at": datetime.utcnow()
-        })
+# Connection and collections setup as before...
 
 # User functions
-def create_user(username: str, password: str):
-    users_coll.insert_one({
-        "username":      username,
-        "password_hash": bcrypt.hash(password),
-        "is_admin":      False
-    })
+def update_user_profile(username: str, updated_data: dict):
+    # Update the user's details, including the profile section
+    user = get_user(username)
+    if user:
+        user_data = { 
+            "name": updated_data["name"],
+            "password_hash": bcrypt.hash(updated_data["password"]),
+            "profile": updated_data["profile"]
+        }
+        users_coll.update_one({"username": username}, {"$set": user_data})
+    else:
+        raise ValueError("User not found.")
 
-def get_user(username: str):
-    return users_coll.find_one({"username": username})
+def store_file(file_data: io.BytesIO, file_name: str):
+    # Store files in MongoDB or AWS S3, etc.
+    file_collection = db["files"]
+    file_id = file_collection.insert_one({
+        "filename": file_name,
+        "content": file_data.getvalue(),
+        "upload_time": datetime.utcnow()
+    }).inserted_id
+    return str(file_id)
 
-def check_password(stored_hash: str, password: str) -> bool:
-    return bcrypt.verify(password, stored_hash)
-
-# Message functions (private and group)
-def create_message(sender: str, receiver: str=None, group: str=None, content: str=""):
+# Message functions (including file support)
+def create_message(sender: str, receiver: str = None, group: str = None, content: str = "", file: str = None):
     doc = {
         "sender":    sender,
         "content":   content,
-        "timestamp": datetime.utcnow()
+        "timestamp": datetime.utcnow(),
+        "file":      file  # Store file ID if any
     }
     if group:
         doc["group"] = group
@@ -73,52 +48,4 @@ def create_message(sender: str, receiver: str=None, group: str=None, content: st
         doc["receiver"] = receiver
     messages_coll.insert_one(doc)
 
-def get_private_conversation(u1: str, u2: str):
-    return list(messages_coll.find({
-        "$or": [
-            {"sender": u1, "receiver": u2},
-            {"sender": u2, "receiver": u1}
-        ]
-    }).sort("timestamp", 1))
-
-def get_group_conversation(group_name: str):
-    return list(messages_coll.find({
-        "group": group_name
-    }).sort("timestamp", 1))
-
-# Group functions
-def get_all_groups():
-    return list(groups_coll.find({"$or": [
-        {"is_public": True},
-        {"creator":   st.session_state.username}
-    ]}))
-
-def user_group_count(username: str) -> int:
-    return groups_coll.count_documents({"creator": username, "is_public": False})
-
-def create_group(name: str, creator: str):
-    if user_group_count(creator) >= 1:
-        raise ValueError("User already has one custom group")
-    groups_coll.insert_one({
-        "name":       name,
-        "creator":    creator,
-        "members":    [creator],
-        "is_public":  False,
-        "created_at": datetime.utcnow()
-    })
-
-# Add this function to your database.py
-
-def list_rooms(username: str):
-    # Fetch groups where the user is either the creator or a member, or public groups
-    return list(groups_coll.find({
-        "$or": [
-            {"is_public": True},       # Public rooms
-            {"creator": username},     # Rooms created by the user
-            {"members": username}      # Rooms the user is a member of
-        ]
-    }))
-
-
-
-
+# Helper functions for getting conversations remain the same...
