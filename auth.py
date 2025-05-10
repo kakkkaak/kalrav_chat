@@ -1,4 +1,5 @@
-import os, streamlit as st
+import os
+import streamlit as st
 from database import create_user, get_user, check_password
 
 def login():

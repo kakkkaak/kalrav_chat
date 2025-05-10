@@ -3,4 +3,3 @@ pymongo
 passlib[bcrypt]
 python-dotenv
 pillow
-

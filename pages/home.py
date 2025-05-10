@@ -4,19 +4,22 @@ from database import get_user, get_notifications, mark_notifications_read, get_f
 def show_home():
     u = st.session_state.username
     st.title(f"Welcome to Big Boss Chat, {u}!")
+
     nots = get_notifications(u)
-    c1, c2 = st.columns([9,1])
-    with c2:
+    _, bell = st.columns([9, 1])
+    with bell:
         if st.button(f"🔔 {len(nots)}"):
             for n in nots:
-                st.write(f"From **{n['msg']['sender']}** at {n['ts']}")
+                st.write(f"🎉 From **{n['msg']['sender']}** at {n['ts']}")
             mark_notifications_read(u)
+
     st.header("Activity")
     if nots:
         for n in nots:
             st.write(f"• **{n['msg']['sender']}**: {n['msg']['msg']['content']}")
     else:
         st.write("No new activity.")
+
     st.header("Your Rooms")
     rooms = list_rooms(u)
     if rooms:
@@ -24,6 +27,7 @@ def show_home():
             st.write(f"• {r['name']}")
     else:
         st.write("You’re not in any rooms yet.")
+
     st.header("Profile Summary")
     user = get_user(u)
     prof = user["profile"]
