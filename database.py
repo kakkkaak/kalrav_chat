@@ -107,5 +107,18 @@ def create_group(name: str, creator: str):
         "created_at": datetime.utcnow()
     })
 
+# Add this function to your database.py
+
+def list_rooms(username: str):
+    # Fetch groups where the user is either the creator or a member, or public groups
+    return list(groups_coll.find({
+        "$or": [
+            {"is_public": True},       # Public rooms
+            {"creator": username},     # Rooms created by the user
+            {"members": username}      # Rooms the user is a member of
+        ]
+    }))
+
+
 
 
