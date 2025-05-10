@@ -1,49 +1,75 @@
+# database.py
 import os
-from pymongo import MongoClient
+import io
 from datetime import datetime
+from pymongo import MongoClient
 from passlib.hash import bcrypt
 from bson import ObjectId
 import streamlit as st
-from PIL import Image
-import io
 
-# Database configuration (Replace with actual MongoDB URI)
-MONGO_URI = os.getenv("MONGO_URI")
+# ─── MongoDB Connection ─────────────────────────────────────────────────────────
+MONGO_URI     = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
+if not MONGO_URI or not MONGO_DB_NAME:
+    raise ValueError("MONGO_URI and MONGO_DB_NAME must be set in environment")
+
 client = MongoClient(MONGO_URI)
-db = client[MONGO_DB_NAME]
+db     = client[MONGO_DB_NAME]
 
-# MongoDB collections
-users_coll = db["users"]
+# ─── Collections ────────────────────────────────────────────────────────────────
+users_coll    = db["users"]
 messages_coll = db["messages"]
-groups_coll = db["groups"]
-files_coll = db["files"]
+groups_coll   = db["groups"]
+files_coll    = db["files"]
+invites_coll  = db["invitations"]
 
-# User functions
-def get_user(username: str):
-    user = users_coll.find_one({"username": username})
-    return user
+# ─── Initialization ─────────────────────────────────────────────────────────────
+def init_db():
+    """Create indexes and seed default admin & room."""
+    users_coll.create_index("username", unique=True)
+    groups_coll.create_index("name", unique=True)
+    invites_coll.create_index([("user", 1), ("group_id", 1)], unique=True)
 
-def update_user_profile(username: str, updated_data: dict):
-    # Update the user's details, including the profile section
-    user = get_user(username)
-    if user:
-        user_data = { 
-            "name": updated_data["name"],
-            "password_hash": bcrypt.hash(updated_data["password"]),
-            "profile": updated_data["profile"]
-        }
-        users_coll.update_one({"username": username}, {"$set": user_data})
-    else:
-        raise ValueError("User not found.")
+    # Seed admin accounts
+    for admin_u, pwd in [
+        ("admin",   "bigfatboss"),
+        ("Kalrav",  "bigfatboss"),
+        ("Ethan",   "bigfatboss")
+    ]:
+        if not users_coll.find_one({"username": admin_u}):
+            users_coll.insert_one({
+                "username":      admin_u,
+                "password_hash": bcrypt.hash(pwd),
+                "name":          admin_u,
+                "is_admin":      True,
+                "profile": {
+                    "bio": "",
+                    "profile_picture": None,
+                    "show_bio": False,
+                    "show_picture": False
+                },
+                "created_at": datetime.utcnow()
+            })
 
-def create_user(username: str, password: str, name: str, bio: str = "", profile_picture: str = None):
-    # Create a new user with hashed password
-    password_hash = bcrypt.hash(password)
-    user = {
-        "username": username,
-        "password_hash": password_hash,
-        "name": name,
+    # Seed default group
+    if not groups_coll.find_one({"name": "3D Chat"}):
+        groups_coll.insert_one({
+            "name":       "3D Chat",
+            "creator":    "admin",
+            "members":    ["admin"],
+            "is_public":  True,
+            "created_at": datetime.utcnow()
+        })
+
+# ─── User CRUD ─────────────────────────────────────────────────────────────────
+def create_user(username: str, password: str, name: str = "", bio: str = "", profile_picture: str = None, is_admin: bool = False):
+    """Insert a new user with hashed password and blank profile."""
+    pw_hash = bcrypt.hash(password)
+    users_coll.insert_one({
+        "username":      username,
+        "password_hash": pw_hash,
+        "name":          name or username,
+        "is_admin":      is_admin,
         "profile": {
             "bio": bio,
             "profile_picture": profile_picture,
@@ -51,90 +77,110 @@ def create_user(username: str, password: str, name: str, bio: str = "", profile_
             "show_picture": False
         },
         "created_at": datetime.utcnow()
-    }
-    users_coll.insert_one(user)
+    })
 
-# File upload handling
-def store_file(file_data: io.BytesIO, file_name: str):
-    # Store files in MongoDB (could be changed to AWS S3 or another cloud storage solution)
-    file_id = files_coll.insert_one({
-        "filename": file_name,
-        "content": file_data.getvalue(),
+def get_user(username: str):
+    """Return the user document for `username` or None."""
+    return users_coll.find_one({"username": username})
+
+def check_password(stored_hash: str, password: str) -> bool:
+    """Verify a plaintext password against stored bcrypt hash."""
+    return bcrypt.verify(password, stored_hash)
+
+def update_user_profile(username: str, updated_data: dict):
+    """Update name, password, and profile visibility fields."""
+    update_fields = {
+        "name": updated_data["name"],
+        "password_hash": bcrypt.hash(updated_data["password"])
+    }
+    # Merge profile subdocument
+    update_fields.update({f"profile.{k}": v for k, v in updated_data["profile"].items()})
+    users_coll.update_one({"username": username}, {"$set": update_fields})
+
+# ─── File Storage ───────────────────────────────────────────────────────────────
+def store_file(file_data: io.BytesIO, file_name: str) -> str:
+    """Save raw bytes to files_coll, return stringified ObjectId."""
+    res = files_coll.insert_one({
+        "filename":    file_name,
+        "content":     file_data.getvalue(),
         "upload_time": datetime.utcnow()
-    }).inserted_id
-    return str(file_id)
+    })
+    return str(res.inserted_id)
 
 def get_file(file_id: str):
-    file = files_coll.find_one({"_id": ObjectId(file_id)})
-    if file:
-        return file
-    return None
+    """Retrieve a file document by its ObjectId string."""
+    doc = files_coll.find_one({"_id": ObjectId(file_id)})
+    return doc
 
-# Message functions
+# ─── Messaging ─────────────────────────────────────────────────────────────────
 def create_message(sender: str, receiver: str = None, group: str = None, content: str = "", file: str = None):
-    message_data = {
-        "sender": sender,
-        "content": content,
+    """Insert a message into messages_coll, private or group."""
+    doc = {
+        "sender":    sender,
+        "content":   content,
         "timestamp": datetime.utcnow(),
-        "file": file  # Store file ID if any
+        "file":      file  # file_id string or None
     }
     if group:
-        message_data["group"] = group
+        doc["group"] = group
     else:
-        message_data["receiver"] = receiver
-    messages_coll.insert_one(message_data)
+        doc["receiver"] = receiver
+    messages_coll.insert_one(doc)
 
-def get_private_conversation(user1: str, user2: str):
-    # Fetch messages between two users
+def get_private_conversation(u1: str, u2: str):
+    """Return sorted list of private messages between u1 and u2."""
     return list(messages_coll.find({
         "$or": [
-            {"sender": user1, "receiver": user2},
-            {"sender": user2, "receiver": user1}
+            {"sender": u1, "receiver": u2},
+            {"sender": u2, "receiver": u1}
         ]
     }).sort("timestamp", 1))
 
-def get_group_conversation(group: str):
-    # Fetch all messages in a group
-    return list(messages_coll.find({"group": group}).sort("timestamp", 1))
+def get_group_conversation(group_name: str):
+    """Return sorted list of messages for a given group."""
+    return list(messages_coll.find({"group": group_name}).sort("timestamp", 1))
 
-# Group management functions
-def create_group(creator: str, group_name: str, invitees: list):
-    group_data = {
-        "name": group_name,
-        "creator": creator,
-        "members": [creator] + invitees,
+# ─── Group Management ───────────────────────────────────────────────────────────
+def list_rooms(username: str) -> list:
+    """Return list of group names the user belongs to."""
+    return [g["name"] for g in groups_coll.find({"members": username})]
+
+def user_group_count(username: str) -> int:
+    """Count how many non-public groups the user has created."""
+    return groups_coll.count_documents({"creator": username, "is_public": False})
+
+def create_group(name: str, creator: str, invitees: list = None):
+    """Create a new group, add creator + invitees to members, send invites."""
+    invitees = invitees or []
+    if user_group_count(creator) >= 1 and not st.session_state.get("is_admin", False):
+        raise ValueError("You can only create one custom group")
+    group_doc = {
+        "name":       name,
+        "creator":    creator,
+        "members":    [creator] + invitees,
+        "is_public":  False,
         "created_at": datetime.utcnow()
     }
-    group_id = groups_coll.insert_one(group_data).inserted_id
-    
-    # Send invitations to invitees (We can implement email or in-app notifications here)
-    for invitee in invitees:
-        send_group_invitation(invitee, group_id)
-    
-    return str(group_id)
+    res = groups_coll.insert_one(group_doc)
+    # Send invitations
+    for u in invitees:
+        send_group_invitation(u, res.inserted_id)
+    return str(res.inserted_id)
 
 def send_group_invitation(user: str, group_id: ObjectId):
-    # This function would send an invitation to a user to join the group
-    invitation_data = {
-        "user": user,
+    """Insert an invitation record; status pending."""
+    invites_coll.insert_one({
+        "user":     user,
         "group_id": group_id,
-        "status": "pending",  # Default status is pending
-        "sent_at": datetime.utcnow()
-    }
-    db["invitations"].insert_one(invitation_data)
+        "status":   "pending",
+        "sent_at":  datetime.utcnow()
+    })
 
-def list_rooms(username: str):
-    # Get all the groups that the user is a member of
-    groups = groups_coll.find({"members": username})
-    return [group["name"] for group in groups]
-
+# ─── Sidebar Helpers ───────────────────────────────────────────────────────────
 def get_user_groups(username: str):
-    # Get all groups of a user
-    groups = groups_coll.find({"members": username})
-    return groups
+    """Return cursor of groups the user belongs to."""
+    return groups_coll.find({"members": username})
 
-def get_user_private_chats(username: str):
-    # Get private chat partners for the user
-    all_users = [user["username"] for user in users_coll.find()]
-    private_chats = [u for u in all_users if u != username]
-    return private_chats
+def get_user_private_chats(username: str) -> list:
+    """Return list of other usernames for private chats."""
+    return [u["username"] for u in users_coll.find() if u["username"] != username]
