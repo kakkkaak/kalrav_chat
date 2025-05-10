@@ -1,7 +1,7 @@
 import streamlit as st
 from dotenv import load_dotenv
-from auth import login, logout
-from database import init_db, get_notifications
+from auth import login
+from database import init_db, get_notifications, get_user
 
 # Page config for wide layout and visible sidebar
 st.set_page_config(
@@ -146,15 +146,35 @@ st.markdown("""
 load_dotenv()
 init_db()
 
-# Initialize session state
+# Initialize session state with defaults
 if "theme" not in st.session_state:
     st.session_state.theme = "light"
 if "background_color" not in st.session_state:
-    st.session_state.background_color = "#f0f0f0"  # Default light background
+    st.session_state.background_color = "#f0f0f0"
 if "display_name" not in st.session_state:
     st.session_state.display_name = None
 if "avatar" not in st.session_state:
     st.session_state.avatar = None
+
+# Restore session state if username exists
+if "username" in st.session_state:
+    try:
+        user = get_user(st.session_state.username)
+        if user:
+            st.session_state.display_name = user["profile"].get("display_name", st.session_state.username)
+            st.session_state.avatar = user["profile"].get("avatar", "👤")
+            st.session_state.theme = user.get("settings", {}).get("theme", "light")
+            st.session_state.background_color = user.get("settings", {}).get("background_color", "#f0f0f0")
+        else:
+            # Clear invalid username
+            for key in list(st.session_state.keys()):
+                if key in ["username", "display_name", "avatar"]:
+                    del st.session_state[key]
+    except Exception as e:
+        st.error(f"Error restoring session: {e}")
+        for key in list(st.session_state.keys()):
+            if key in ["username", "display_name", "avatar"]:
+                del st.session_state[key]
 
 # Login check
 if "username" not in st.session_state:
@@ -194,6 +214,7 @@ with st.sidebar:
     # Logout button
     st.markdown("---")
     if st.button("Logout", key="logout_btn"):
+        from auth import logout
         logout()
         st.rerun()
 

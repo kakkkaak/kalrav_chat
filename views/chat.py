@@ -26,17 +26,24 @@ def show_chat():
     if "editing_message_id" not in st.session_state:
         st.session_state.editing_message_id = None
     if "all_users" not in st.session_state:
-        st.session_state.all_users = [doc["username"] for doc in __import__("database").users_coll.find({"username": {"$ne": u}})]
+        try:
+            st.session_state.all_users = [doc["username"] for doc in __import__("database").users_coll.find({"username": {"$ne": u}})]
+        except Exception as e:
+            st.error(f"Error fetching users: {e}")
+            st.session_state.all_users = []
     if "chatted_users" not in st.session_state:
         st.session_state.chatted_users = set()
-        messages = __import__("database").messages_coll.find({
-            "$or": [{"sender": u}, {"receiver": u}]
-        })
-        for msg in messages:
-            if msg["sender"] != u:
-                st.session_state.chatted_users.add(msg["sender"])
-            if msg.get("receiver") and msg["receiver"] != u:
-                st.session_state.chatted_users.add(msg["receiver"])
+        try:
+            messages = __import__("database").messages_coll.find({
+                "$or": [{"sender": u}, {"receiver": u}]
+            })
+            for msg in messages:
+                if msg["sender"] != u:
+                    st.session_state.chatted_users.add(msg["sender"])
+                if msg.get("receiver") and msg["receiver"] != u:
+                    st.session_state.chatted_users.add(msg["receiver"])
+        except Exception as e:
+            st.error(f"Error fetching chatted users: {e}")
 
     # Secondary sidebar for chat selection
     with st.sidebar:
@@ -91,18 +98,21 @@ def show_chat():
                 st.session_state.chat_partner = new_user
                 st.session_state.message_offset = 0
                 st.session_state.editing_message_id = None
-                st.session_state.chatted_users.add(new_user)  # Add to chatted users
+                st.session_state.chatted_users.add(new_user)
                 st.rerun()
 
         # Group chats
         st.markdown("**Groups**")
-        for grp in get_user_groups(u):
-            if st.button(grp["name"], key=f"chat_group_{grp['name']}", help=f"Join {grp['name']}", use_container_width=True):
-                st.session_state.chat_mode = "group"
-                st.session_state.chat_group = grp["name"]
-                st.session_state.message_offset = 0
-                st.session_state.editing_message_id = None
-                st.rerun()
+        try:
+            for grp in get_user_groups(u):
+                if st.button(grp["name"], key=f"chat_group_{grp['name']}", help=f"Join {grp['name']}", use_container_width=True):
+                    st.session_state.chat_mode = "group"
+                    st.session_state.chat_group = grp["name"]
+                    st.session_state.message_offset = 0
+                    st.session_state.editing_message_id = None
+                    st.rerun()
+        except Exception as e:
+            st.error(f"Error fetching groups: {e}")
 
     mode = st.session_state.chat_mode
 
@@ -112,13 +122,25 @@ def show_chat():
             st.info("Select a user from the sidebar or dropdown to start chatting")
             return
 
-        mark_messages_read(u, p)
+        try:
+            mark_messages_read(u, p)
+        except Exception as e:
+            st.error(f"Error marking messages read: {e}")
+
+        # Refresh button
+        if st.button("Refresh Chat", key="refresh_private_chat"):
+            st.session_state.message_offset = 0
+            st.rerun()
 
         search_query = st.text_input("Search messages", key="search_input_private", placeholder="🔍 Type to search...")
-        if search_query:
-            messages = search_messages(search_query, u, p=p)
-        else:
-            messages = get_private_conversation(u, p, skip=st.session_state.message_offset, limit=50)
+        try:
+            if search_query:
+                messages = search_messages(search_query, u, p=p)
+            else:
+                messages = get_private_conversation(u, p, skip=st.session_state.message_offset, limit=50)
+        except Exception as e:
+            st.error(f"Error fetching messages: {e}")
+            messages = []
 
         if not messages:
             st.info(f"Start your conversation with {p}!")
@@ -134,28 +156,34 @@ def show_chat():
                     if st.session_state.editing_message_id == str(m["_id"]):
                         # Editing mode
                         if m.get("file_id"):
-                            fdoc = get_file(m["file_id"])
-                            if fdoc["name"].lower().endswith(".pdf"):
-                                st.write("📄 PDF Attachment")
-                                st.download_button(
-                                    label="Download PDF",
-                                    data=fdoc["content"],
-                                    file_name=fdoc["name"],
-                                    mime="application/pdf"
-                                )
-                            else:
-                                st.image(fdoc["content"])
-                                st.download_button(
-                                    label="Download Image",
-                                    data=fdoc["content"],
-                                    file_name=fdoc["name"],
-                                    mime="image/jpeg"
-                                )
+                            try:
+                                fdoc = get_file(m["file_id"])
+                                if fdoc["name"].lower().endswith(".pdf"):
+                                    st.write("📄 PDF Attachment")
+                                    st.download_button(
+                                        label="Download PDF",
+                                        data=fdoc["content"],
+                                        file_name=fdoc["name"],
+                                        mime="application/pdf"
+                                    )
+                                else:
+                                    st.image(fdoc["content"])
+                                    st.download_button(
+                                        label="Download Image",
+                                        data=fdoc["content"],
+                                        file_name=fdoc["name"],
+                                        mime="image/jpeg"
+                                    )
+                            except Exception as e:
+                                st.error(f"Error fetching file: {e}")
                         new_content = st.text_input("Edit message", value=m["content"], key=f"edit_{m['_id']}")
                         if st.button("Save", key=f"save_{m['_id']}"):
-                            edit_message(str(m["_id"]), u, new_content)
-                            st.session_state.editing_message_id = None
-                            st.rerun()
+                            try:
+                                edit_message(str(m["_id"]), u, new_content)
+                                st.session_state.editing_message_id = None
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error editing message: {e}")
                     else:
                         # Normal display
                         if m.get("edited", False):
@@ -163,23 +191,26 @@ def show_chat():
                         st.write(emoji.emojize(m["content"]))
                         st.markdown(f"<small>{m['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}</small>", unsafe_allow_html=True)
                         if m.get("file_id"):
-                            fdoc = get_file(m["file_id"])
-                            if fdoc["name"].lower().endswith(".pdf"):
-                                st.write("📄 PDF Attachment")
-                                st.download_button(
-                                    label="Download PDF",
-                                    data=fdoc["content"],
-                                    file_name=fdoc["name"],
-                                    mime="application/pdf"
-                                )
-                            else:
-                                st.image(fdoc["content"])
-                                st.download_button(
-                                    label="Download Image",
-                                    data=fdoc["content"],
-                                    file_name=fdoc["name"],
-                                    mime="image/jpeg"
-                                )
+                            try:
+                                fdoc = get_file(m["file_id"])
+                                if fdoc["name"].lower().endswith(".pdf"):
+                                    st.write("📄 PDF Attachment")
+                                    st.download_button(
+                                        label="Download PDF",
+                                        data=fdoc["content"],
+                                        file_name=fdoc["name"],
+                                        mime="application/pdf"
+                                    )
+                                else:
+                                    st.image(fdoc["content"])
+                                    st.download_button(
+                                        label="Download Image",
+                                        data=fdoc["content"],
+                                        file_name=fdoc["name"],
+                                        mime="image/jpeg"
+                                    )
+                            except Exception as e:
+                                st.error(f"Error fetching file: {e}")
                         if m.get("reactions"):
                             st.markdown(" ".join(f"{r} {c}" for r, c in m["reactions"].items()))
                         if m["sender"] == u:
@@ -192,13 +223,19 @@ def show_chat():
                                     st.rerun()
                             with col2:
                                 if st.button("Delete", key=f"delete_btn_{m['_id']}"):
-                                    delete_message(str(m["_id"]), u)
-                                    st.rerun()
+                                    try:
+                                        delete_message(str(m["_id"]), u)
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error deleting message: {e}")
                             with col3:
                                 reaction = st.selectbox("React", ["", "👍", "❤️", "😂"], key=f"react_{m['_id']}")
                                 if reaction:
-                                    add_reaction(str(m["_id"]), u, reaction)
-                                    st.rerun()
+                                    try:
+                                        add_reaction(str(m["_id"]), u, reaction)
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error adding reaction: {e}")
 
         if not search_query and len(messages) == 50:
             if st.button("Load More", key="load_more_private"):
@@ -208,13 +245,16 @@ def show_chat():
         txt = st.chat_input("Send a private message…")
         up = st.file_uploader("Attachment", type=["png","jpg","jpeg","pdf"], key="private_upload")
         if txt or up:
-            fid = None
-            if up:
-                fid = store_file(io.BytesIO(up.getvalue()), up.name)
-            create_message(u, receiver=p, content=txt if txt is not None else "", file_id=fid)
-            if p not in st.session_state.chatted_users:
-                st.session_state.chatted_users.add(p)
-            st.rerun()
+            try:
+                fid = None
+                if up:
+                    fid = store_file(io.BytesIO(up.getvalue()), up.name)
+                create_message(u, receiver=p, content=txt if txt is not None else "", file_id=fid)
+                if p not in st.session_state.chatted_users:
+                    st.session_state.chatted_users.add(p)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error sending message: {e}")
 
     else:  # Group mode
         g = st.session_state.chat_group
@@ -222,11 +262,20 @@ def show_chat():
             st.info("Select a group from the sidebar to start chatting")
             return
 
+        # Refresh button
+        if st.button("Refresh Chat", key="refresh_group_chat"):
+            st.session_state.message_offset = 0
+            st.rerun()
+
         search_query = st.text_input("Search messages", key="search_input_group", placeholder="🔍 Type to search...")
-        if search_query:
-            messages = search_messages(search_query, u, g=g)
-        else:
-            messages = get_group_conversation(g, skip=st.session_state.message_offset, limit=50)
+        try:
+            if search_query:
+                messages = search_messages(search_query, u, g=g)
+            else:
+                messages = get_group_conversation(g, skip=st.session_state.message_offset, limit=50)
+        except Exception as e:
+            st.error(f"Error fetching messages: {e}")
+            messages = []
 
         for m in messages:
             with st.chat_message("user" if m["sender"] == u else "assistant"):
@@ -239,28 +288,34 @@ def show_chat():
                 if st.session_state.editing_message_id == str(m["_id"]):
                     # Editing mode
                     if m.get("file_id"):
-                        fdoc = get_file(m["file_id"])
-                        if fdoc["name"].lower().endswith(".pdf"):
-                            st.write("📄 PDF Attachment")
-                            st.download_button(
-                                label="Download PDF",
-                                data=fdoc["content"],
-                                file_name=fdoc["name"],
-                                mime="application/pdf"
-                            )
-                        else:
-                            st.image(fdoc["content"])
-                            st.download_button(
-                                label="Download Image",
-                                data=fdoc["content"],
-                                file_name=fdoc["name"],
-                                mime="image/jpeg"
-                            )
+                        try:
+                            fdoc = get_file(m["file_id"])
+                            if fdoc["name"].lower().endswith(".pdf"):
+                                st.write("📄 PDF Attachment")
+                                st.download_button(
+                                    label="Download PDF",
+                                    data=fdoc["content"],
+                                    file_name=fdoc["name"],
+                                    mime="application/pdf"
+                                )
+                            else:
+                                st.image(fdoc["content"])
+                                st.download_button(
+                                    label="Download Image",
+                                    data=fdoc["content"],
+                                    file_name=fdoc["name"],
+                                    mime="image/jpeg"
+                                )
+                        except Exception as e:
+                            st.error(f"Error fetching file: {e}")
                     new_content = st.text_input("Edit message", value=m["content"], key=f"edit_{m['_id']}")
                     if st.button("Save", key=f"save_{m['_id']}"):
-                        edit_message(str(m["_id"]), u, new_content)
-                        st.session_state.editing_message_id = None
-                        st.rerun()
+                        try:
+                            edit_message(str(m["_id"]), u, new_content)
+                            st.session_state.editing_message_id = None
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error editing message: {e}")
                 else:
                     # Normal display
                     if m.get("edited", False):
@@ -268,23 +323,26 @@ def show_chat():
                     st.write(emoji.emojize(m["content"]))
                     st.markdown(f"<small>{m['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}</small>", unsafe_allow_html=True)
                     if m.get("file_id"):
-                        fdoc = get_file(m["file_id"])
-                        if fdoc["name"].lower().endswith(".pdf"):
-                            st.write("📄 PDF Attachment")
-                            st.download_button(
-                                label="Download PDF",
-                                data=fdoc["content"],
-                                file_name=fdoc["name"],
-                                mime="application/pdf"
-                            )
-                        else:
-                            st.image(fdoc["content"])
-                            st.download_button(
-                                label="Download Image",
-                                data=fdoc["content"],
-                                file_name=fdoc["name"],
-                                mime="image/jpeg"
-                            )
+                        try:
+                            fdoc = get_file(m["file_id"])
+                            if fdoc["name"].lower().endswith(".pdf"):
+                                st.write("📄 PDF Attachment")
+                                st.download_button(
+                                    label="Download PDF",
+                                    data=fdoc["content"],
+                                    file_name=fdoc["name"],
+                                    mime="application/pdf"
+                                )
+                            else:
+                                st.image(fdoc["content"])
+                                st.download_button(
+                                    label="Download Image",
+                                    data=fdoc["content"],
+                                    file_name=fdoc["name"],
+                                    mime="image/jpeg"
+                                )
+                        except Exception as e:
+                            st.error(f"Error fetching file: {e}")
                     if m.get("reactions"):
                         st.markdown(" ".join(f"{r} {c}" for r, c in m["reactions"].items()))
                     if m["sender"] == u:
@@ -295,13 +353,19 @@ def show_chat():
                                 st.rerun()
                         with col2:
                             if st.button("Delete", key=f"delete_btn_{m['_id']}"):
-                                delete_message(str(m["_id"]), u)
-                                st.rerun()
+                                try:
+                                    delete_message(str(m["_id"]), u)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error deleting message: {e}")
                         with col3:
                             reaction = st.selectbox("React", ["", "👍", "❤️", "😂"], key=f"react_{m['_id']}")
                             if reaction:
-                                add_reaction(str(m["_id"]), u, reaction)
-                                st.rerun()
+                                try:
+                                    add_reaction(str(m["_id"]), u, reaction)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error adding reaction: {e}")
 
         if not search_query and len(messages) == 50:
             if st.button("Load More", key="load_more_group"):
@@ -311,8 +375,11 @@ def show_chat():
         txt = st.chat_input("Send a group message…")
         up = st.file_uploader("Attachment", type=["png","jpg","jpeg","pdf"], key="group_upload")
         if txt or up:
-            fid = None
-            if up:
-                fid = store_file(io.BytesIO(up.getvalue()), up.name)
-            create_message(u, group=g, content=txt if txt is not None else "", file_id=fid)
-            st.rerun()
+            try:
+                fid = None
+                if up:
+                    fid = store_file(io.BytesIO(up.getvalue()), up.name)
+                create_message(u, group=g, content=txt if txt is not None else "", file_id=fid)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error sending message: {e}")

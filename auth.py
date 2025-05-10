@@ -8,15 +8,20 @@ def login():
         password = st.text_input("Password", type="password")
         submitted = st.form_submit_button("Login")
         if submitted:
-            user = get_user(username)
-            if user and check_password(user["password_hash"], password):
-                st.session_state.username = username
-                st.session_state.display_name = user["profile"].get("display_name", username)
-                st.session_state.avatar = user["profile"].get("avatar", "👤")
-                st.success("Logged in!")
-                st.rerun()
-            else:
-                st.error("Invalid username or password")
+            try:
+                user = get_user(username)
+                if user and check_password(user["password_hash"], password):
+                    st.session_state.username = username
+                    st.session_state.display_name = user["profile"].get("display_name", username)
+                    st.session_state.avatar = user["profile"].get("avatar", "👤")
+                    st.session_state.theme = user.get("settings", {}).get("theme", "light")
+                    st.session_state.background_color = user.get("settings", {}).get("background_color", "#f0f0f0")
+                    st.success("Logged in!")
+                    st.rerun()
+                else:
+                    st.error("Invalid username or password")
+            except Exception as e:
+                st.error(f"Error during login: {e}")
 
 def signup():
     st.title("Sign Up")
@@ -27,25 +32,33 @@ def signup():
         avatar = st.selectbox("Avatar", ["👤", "😎", "🚀", "🐱", "🦁"], index=0)
         submitted = st.form_submit_button("Sign Up")
         if submitted:
-            if get_user(username):
-                st.error("Username already exists")
-            else:
-                profile = {
-                    "name": username,
-                    "bio": "",
-                    "pic": None,
-                    "show_bio": False,
-                    "show_pic": False,
-                    "display_name": display_name or username,
-                    "avatar": avatar
-                }
-                create_user(username, password, profile)
-                st.success("Account created! Please log in.")
-                st.session_state.username = username
-                st.session_state.display_name = display_name or username
-                st.session_state.avatar = avatar
-                st.rerun()
+            try:
+                if get_user(username):
+                    st.error("Username already exists")
+                else:
+                    profile = {
+                        "name": username,
+                        "bio": "",
+                        "pic": None,
+                        "show_bio": False,
+                        "show_pic": False,
+                        "display_name": display_name or username,
+                        "avatar": avatar
+                    }
+                    create_user(username, password, profile)
+                    st.session_state.username = username
+                    st.session_state.display_name = display_name or username
+                    st.session_state.avatar = avatar
+                    st.session_state.theme = "light"
+                    st.session_state.background_color = "#f0f0f0"
+                    st.success("Account created! Please log in.")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Error during signup: {e}")
 
 def logout():
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
+    # Selectively clear auth-related keys
+    keys_to_clear = ["username", "display_name", "avatar"]
+    for key in keys_to_clear:
+        if key in st.session_state:
+            del st.session_state[key]
