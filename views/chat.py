@@ -3,10 +3,12 @@ from database import (
     get_private_conversation, get_group_conversation,
     create_message, store_file, get_file,
     get_user_groups, delete_message, edit_message,
-    mark_messages_read, search_messages, add_reaction, get_user
+    mark_messages_read, search_messages, add_reaction, get_user,
+    get_new_private_messages, get_new_group_messages
 )
 import emoji
 from datetime import datetime
+import time
 
 def show_chat():
     u = st.session_state.username
@@ -44,6 +46,14 @@ def show_chat():
                     st.session_state.chatted_users.add(msg["receiver"])
         except Exception as e:
             st.error(f"Error fetching chatted users: {e}")
+    if "last_message_time" not in st.session_state:
+        st.session_state.last_message_time = datetime.utcnow()
+    if "cached_messages" not in st.session_state:
+        st.session_state.cached_messages = []
+    if "auto_refresh" not in st.session_state:
+        st.session_state.auto_refresh = True
+    if "last_refresh" not in st.session_state:
+        st.session_state.last_refresh = time.time()
 
     # Secondary sidebar for chat selection
     with st.sidebar:
@@ -84,6 +94,8 @@ def show_chat():
                 st.session_state.chat_partner = other
                 st.session_state.message_offset = 0
                 st.session_state.editing_message_id = None
+                st.session_state.cached_messages = []
+                st.session_state.last_message_time = datetime.utcnow()
                 st.rerun()
 
         # Dropdown for new chats with confirmation button
@@ -98,6 +110,8 @@ def show_chat():
                 st.session_state.chat_partner = new_user
                 st.session_state.message_offset = 0
                 st.session_state.editing_message_id = None
+                st.session_state.cached_messages = []
+                st.session_state.last_message_time = datetime.utcnow()
                 st.session_state.chatted_users.add(new_user)
                 st.rerun()
 
@@ -110,11 +124,20 @@ def show_chat():
                     st.session_state.chat_group = grp["name"]
                     st.session_state.message_offset = 0
                     st.session_state.editing_message_id = None
+                    st.session_state.cached_messages = []
+                    st.session_state.last_message_time = datetime.utcnow()
                     st.rerun()
         except Exception as e:
             st.error(f"Error fetching groups: {e}")
 
     mode = st.session_state.chat_mode
+
+    # Auto-refresh logic
+    st.checkbox("Enable Auto-Refresh", value=st.session_state.auto_refresh, key="auto_refresh_toggle")
+    st.session_state.auto_refresh = st.session_state.auto_refresh_toggle
+    if st.session_state.auto_refresh and time.time() - st.session_state.last_refresh >= 5:
+        st.session_state.last_refresh = time.time()
+        st.rerun()
 
     if mode == "private":
         p = st.session_state.chat_partner
@@ -129,15 +152,28 @@ def show_chat():
 
         # Refresh button
         if st.button("Refresh Chat", key="refresh_private_chat"):
-            st.session_state.message_offset = 0
+            st.session_state.cached_messages = []
+            st.session_state.last_message_time = datetime.utcnow()
             st.rerun()
 
         search_query = st.text_input("Search messages", key="search_input_private", placeholder="🔍 Type to search...")
         try:
             if search_query:
                 messages = search_messages(search_query, u, p=p)
+                st.session_state.cached_messages = messages
+                st.session_state.last_message_time = datetime.utcnow()
             else:
-                messages = get_private_conversation(u, p, skip=st.session_state.message_offset, limit=50)
+                # Fetch new messages since last timestamp
+                new_messages = get_new_private_messages(u, p, st.session_state.last_message_time)
+                if new_messages:
+                    st.session_state.cached_messages.extend(new_messages)
+                    st.session_state.last_message_time = max(m["timestamp"] for m in new_messages)
+                # Fetch initial messages if cache is empty
+                if not st.session_state.cached_messages:
+                    st.session_state.cached_messages = get_private_conversation(u, p, skip=st.session_state.message_offset, limit=50)
+                    if st.session_state.cached_messages:
+                        st.session_state.last_message_time = max(m["timestamp"] for m in st.session_state.cached_messages)
+                messages = st.session_state.cached_messages
         except Exception as e:
             st.error(f"Error fetching messages: {e}")
             messages = []
@@ -181,6 +217,7 @@ def show_chat():
                             try:
                                 edit_message(str(m["_id"]), u, new_content)
                                 st.session_state.editing_message_id = None
+                                st.session_state.cached_messages = []
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Error editing message: {e}")
@@ -225,6 +262,7 @@ def show_chat():
                                 if st.button("Delete", key=f"delete_btn_{m['_id']}"):
                                     try:
                                         delete_message(str(m["_id"]), u)
+                                        st.session_state.cached_messages = []
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Error deleting message: {e}")
@@ -233,6 +271,7 @@ def show_chat():
                                 if reaction:
                                     try:
                                         add_reaction(str(m["_id"]), u, reaction)
+                                        st.session_state.cached_messages = []
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Error adding reaction: {e}")
@@ -240,6 +279,7 @@ def show_chat():
         if not search_query and len(messages) == 50:
             if st.button("Load More", key="load_more_private"):
                 st.session_state.message_offset += 50
+                st.session_state.cached_messages = []
                 st.rerun()
 
         txt = st.chat_input("Send a private message…")
@@ -252,6 +292,8 @@ def show_chat():
                 create_message(u, receiver=p, content=txt if txt is not None else "", file_id=fid)
                 if p not in st.session_state.chatted_users:
                     st.session_state.chatted_users.add(p)
+                st.session_state.cached_messages = []
+                st.session_state.last_message_time = datetime.utcnow()
                 st.rerun()
             except Exception as e:
                 st.error(f"Error sending message: {e}")
@@ -264,15 +306,28 @@ def show_chat():
 
         # Refresh button
         if st.button("Refresh Chat", key="refresh_group_chat"):
-            st.session_state.message_offset = 0
+            st.session_state.cached_messages = []
+            st.session_state.last_message_time = datetime.utcnow()
             st.rerun()
 
         search_query = st.text_input("Search messages", key="search_input_group", placeholder="🔍 Type to search...")
         try:
             if search_query:
                 messages = search_messages(search_query, u, g=g)
+                st.session_state.cached_messages = messages
+                st.session_state.last_message_time = datetime.utcnow()
             else:
-                messages = get_group_conversation(g, skip=st.session_state.message_offset, limit=50)
+                # Fetch new messages since last timestamp
+                new_messages = get_new_group_messages(g, st.session_state.last_message_time)
+                if new_messages:
+                    st.session_state.cached_messages.extend(new_messages)
+                    st.session_state.last_message_time = max(m["timestamp"] for m in new_messages)
+                # Fetch initial messages if cache is empty
+                if not st.session_state.cached_messages:
+                    st.session_state.cached_messages = get_group_conversation(g, skip=st.session_state.message_offset, limit=50)
+                    if st.session_state.cached_messages:
+                        st.session_state.last_message_time = max(m["timestamp"] for m in st.session_state.cached_messages)
+                messages = st.session_state.cached_messages
         except Exception as e:
             st.error(f"Error fetching messages: {e}")
             messages = []
@@ -313,6 +368,7 @@ def show_chat():
                         try:
                             edit_message(str(m["_id"]), u, new_content)
                             st.session_state.editing_message_id = None
+                            st.session_state.cached_messages = []
                             st.rerun()
                         except Exception as e:
                             st.error(f"Error editing message: {e}")
@@ -355,6 +411,7 @@ def show_chat():
                             if st.button("Delete", key=f"delete_btn_{m['_id']}"):
                                 try:
                                     delete_message(str(m["_id"]), u)
+                                    st.session_state.cached_messages = []
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Error deleting message: {e}")
@@ -363,6 +420,7 @@ def show_chat():
                             if reaction:
                                 try:
                                     add_reaction(str(m["_id"]), u, reaction)
+                                    st.session_state.cached_messages = []
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Error adding reaction: {e}")
@@ -370,6 +428,7 @@ def show_chat():
         if not search_query and len(messages) == 50:
             if st.button("Load More", key="load_more_group"):
                 st.session_state.message_offset += 50
+                st.session_state.cached_messages = []
                 st.rerun()
 
         txt = st.chat_input("Send a group message…")
@@ -380,6 +439,8 @@ def show_chat():
                 if up:
                     fid = store_file(io.BytesIO(up.getvalue()), up.name)
                 create_message(u, group=g, content=txt if txt is not None else "", file_id=fid)
+                st.session_state.cached_messages = []
+                st.session_state.last_message_time = datetime.utcnow()
                 st.rerun()
             except Exception as e:
                 st.error(f"Error sending message: {e}")

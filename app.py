@@ -155,6 +155,8 @@ if "display_name" not in st.session_state:
     st.session_state.display_name = None
 if "avatar" not in st.session_state:
     st.session_state.avatar = None
+if "nav_choice" not in st.session_state:
+    st.session_state.nav_choice = "Home"
 
 # Restore session state if username exists
 if "username" in st.session_state:
@@ -208,14 +210,19 @@ with st.sidebar:
             "Profile",
             "Settings"
         ],
-        key="nav_radio"
+        key="nav_radio",
+        index=["Home", "Chat", "Groups", "Profile", "Settings"].index(st.session_state.nav_choice.split(" ")[0])
     )
+    
+    # Update nav_choice
+    st.session_state.nav_choice = choice
     
     # Logout button
     st.markdown("---")
     if st.button("Logout", key="logout_btn"):
         from auth import logout
         logout()
+        st.session_state.nav_choice = "Home"
         st.rerun()
 
 # Route to pages

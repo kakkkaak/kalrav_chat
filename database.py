@@ -134,6 +134,18 @@ def get_private_conversation(u1, u2, skip=0, limit=50):
 def get_group_conversation(group_name, skip=0, limit=50):
     return list(messages_coll.find({"group": group_name}).sort("timestamp", -1).skip(skip).limit(limit))[::-1]
 
+def get_new_private_messages(u1, u2, last_timestamp):
+    return list(messages_coll.find({
+        "$or": [{"sender": u1, "receiver": u2}, {"sender": u2, "receiver": u1}],
+        "timestamp": {"$gt": last_timestamp}
+    }).sort("timestamp", 1))
+
+def get_new_group_messages(group_name, last_timestamp):
+    return list(messages_coll.find({
+        "group": group_name,
+        "timestamp": {"$gt": last_timestamp}
+    }).sort("timestamp", 1))
+
 def delete_message(message_id, sender):
     messages_coll.delete_one({"_id": ObjectId(message_id), "sender": sender})
 
