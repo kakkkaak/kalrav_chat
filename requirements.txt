@@ -1,8 +1,6 @@
 streamlit
-sqlalchemy
+pymongo
 passlib[bcrypt]
 python-dotenv
-psycopg2-binary
-pymongo
-
+pillow
 
