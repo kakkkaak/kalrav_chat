@@ -2,54 +2,50 @@ import streamlit as st
 from dotenv import load_dotenv
 from auth import login
 from database import init_db
+import logging
 
-# Must come first
+# Set up Streamlit page configuration
 st.set_page_config(
     page_title="Big Boss Chat", 
     layout="wide",
-    initial_sidebar_state="collapsed"  # Start with sidebar collapsed
+    initial_sidebar_state="collapsed"
 )
 
-# Even more aggressive sidebar hiding
+# Hide default Streamlit elements
 st.markdown("""
 <style>
-    /* Hide the default sidebar completely */
     .css-1d391kg, .css-12aokuf, .css-15tx938 {display: none;}
-    
-    /* Hide the top file navigation sidebar */
     [data-testid="collapsedControl"] {display: none !important;}
-    
-    /* Hide hamburger menu */
     #MainMenu {visibility: hidden;}
-    
-    /* Hide footer */
     footer {visibility: hidden;}
-    
-    /* Hide "Deploy", "Manage app", "Rerun" buttons at the end of output */
     .stDeployButton {display:none;}
-    
-    /* Adjust padding */
     .main .block-container {padding-top: 1rem;}
-    
-    /* Additional class to target sidebar */
     header[data-testid="stHeader"] {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
+# Load environment variables and initialize database
 load_dotenv()
 init_db()
 
-# Create our own custom sidebar container
+# Set up logging
+logging.basicConfig(filename='app.log', level=logging.ERROR)
+
+# Handle login
 if "username" not in st.session_state:
     login()
     st.stop()
 
-# After login: show our custom navigation
+# Custom sidebar with navigation and logout
 with st.sidebar:
     st.title("Big Boss Chat")
     choice = st.radio("Navigation", ["Home", "Chat", "Groups", "Profile"])
+    if st.button("Logout", key="logout_button"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
 
-# Route to the appropriate page
+# Route to selected page
 if choice == "Home":
     from views.home import show_home
     show_home()

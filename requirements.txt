@@ -1,5 +1,6 @@
 streamlit
 pymongo
-passlib[bcrypt]
+passlib
 python-dotenv
-pillow
+bleach
+emoji
