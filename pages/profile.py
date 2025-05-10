@@ -1,45 +1,24 @@
-# pages/profile.py
-import streamlit as st
-from database import get_user, update_user_profile
-from PIL import Image
-import io
+# Profile.py
+import streamlit as st, io
+from database import get_user, update_user_profile, store_file
 
-# Ensure the user is logged in
 if "username" not in st.session_state:
-    st.error("Please log in first.")
-    st.stop()
+    st.error("Login first"); st.stop()
 
-username = st.session_state.username
+u=st.session_state.username
+user=get_user(u)
+st.title("Profile")
 
-st.title("👤 Profile Page")
+name=st.text_input("Display Name",user["name"])
+pwd=st.text_input("New Password","",type="password")
+bio=st.text_area("Bio",user["profile"]["bio"])
+show_bio=st.checkbox("Show Bio",user["profile"]["show_bio"])
+pic=st.file_uploader("Profile Picture",type=["png","jpg","jpeg"])
+show_pic=st.checkbox("Show Picture",user["profile"]["show_pic"])
 
-# Fetch current user details
-user = get_user(username)
-
-# Fields for profile
-name = st.text_input("Full Name", value=user.get("name", ""), max_chars=50)
-password = st.text_input("New Password", type="password", max_chars=50)
-bio = st.text_area("Bio", value=user.get("profile", {}).get("bio", ""))
-show_bio = st.checkbox("Show bio to public", value=user.get("profile", {}).get("show_bio", False))
-
-profile_picture = st.file_uploader("Upload Profile Picture", type=["png", "jpg", "jpeg"], help="Max size: 10MB")
-show_picture = st.checkbox("Show picture to public", value=user.get("profile", {}).get("show_picture", False))
-
-# Update the profile on submit
-if st.button("Save Profile"):
-    if name and password:
-        updated_profile = {
-            "name": name,
-            "password": password,
-            "profile": {
-                "bio": bio,
-                "show_bio": show_bio,
-                "profile_picture": profile_picture,
-                "show_picture": show_picture
-            }
-        }
-        # Update the profile in the database
-        update_user_profile(username, updated_profile)
-        st.success("Profile updated successfully.")
-    else:
-        st.error("Name and password are required.")
+if st.button("Save"):
+    pic_id=user["profile"]["profile_picture"]
+    if pic:
+        pic_id=store_file(io.BytesIO(pic.getvalue()),pic.name)
+    update_user_profile(u,{"name":name,"password":pwd or "ignore","profile":{"bio":bio,"profile_picture":pic_id,"show_bio":show_bio,"show_picture":show_pic}})
+    st.success("Saved")
