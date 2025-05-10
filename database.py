@@ -91,3 +91,33 @@ def get_notifications(username):
 
 def mark_notifications_read(username):
     notes_coll.update_many({"user":username,"read":False},{"$set":{"read":True}})
+
+# ─── Group helper: count non-public groups a user has created ───────────────
+def user_group_count(username: str) -> int:
+    return groups_coll.count_documents({
+        "creator": username,
+        "is_public": False
+    })
+
+# ─── Invitation helper ──────────────────────────────────────────────────────
+def invite_user_to_group(group_name: str, invited_user: str):
+    invites_coll.insert_one({
+        "group": group_name,
+        "invited_user": invited_user,
+        "status": "pending",
+        "ts": datetime.utcnow()
+    })
+
+# ─── Profile update helper ─────────────────────────────────────────────────
+def update_profile(username: str, profile: dict, visible_fields: list):
+    """
+    Overwrite the 'profile' subdocument and 'visible_fields' list
+    """
+    users_coll.update_one(
+        {"username": username},
+        {"$set": {
+            "profile": profile,
+            "visible_fields": visible_fields
+        }}
+    )
+
