@@ -22,7 +22,7 @@ def init_db():
     users_coll.create_index("username", unique=True)
     groups_coll.create_index("name", unique=True)
     notes_coll.create_index([("user", 1), ("read", 1)])
-    messages_coll.create_index([("content", "text")])  # For search functionality
+    messages_coll.create_index([("content", "text")])
 
     admin_u = os.getenv("ADMIN_USERNAME")
     admin_p = os.getenv("ADMIN_PASSWORD")
@@ -31,7 +31,7 @@ def init_db():
             "username": admin_u,
             "password_hash": bcrypt.hash(admin_p),
             "is_admin": True,
-            "profile": {"name": admin_u, "bio": "", "pic": None, "show_bio": False, "show_pic": False},
+            "profile": {"name": admin_u, "bio": "", "pic": None, "show_bio": False, "show_pic": False, "display_name": admin_u},
             "visible_fields": [],
             "created_at": datetime.utcnow()
         })
@@ -48,6 +48,7 @@ def init_db():
 # User management
 def create_user(username, password, profile):
     pw = bcrypt.hash(password)
+    profile["display_name"] = profile.get("name", username)
     users_coll.insert_one({
         "username": username,
         "password_hash": pw,
@@ -64,6 +65,7 @@ def check_password(h, p):
     return bcrypt.verify(p, h)
 
 def update_profile(username, profile, visible_fields):
+    profile["display_name"] = profile.get("display_name", profile.get("name", username))
     users_coll.update_one(
         {"username": username},
         {"$set": {"profile": profile, "visible_fields": visible_fields}}
@@ -84,19 +86,24 @@ def create_message(sender, receiver=None, group=None, content="", file_id=None):
         "content": content,
         "timestamp": datetime.utcnow(),
         "file_id": file_id,
-        "read": False  # Default for private messages
+        "read": False
     }
     if receiver:
         doc["receiver"] = receiver
         notes_coll.insert_one({"user": receiver, "msg": doc, "read": False, "ts": datetime.utcnow()})
     if group:
         doc["group"] = group
+        # Notify group members except sender
+        group_doc = groups_coll.find_one({"name": group})
+        for member in group_doc["members"]:
+            if member != sender:
+                notes_coll.insert_one({"user": member, "msg": doc, "read": False, "ts": datetime.utcnow()})
     messages_coll.insert_one(doc)
 
 def get_private_conversation(u1, u2, skip=0, limit=50):
     return list(messages_coll.find(
         {"$or": [{"sender": u1, "receiver": u2}, {"sender": u2, "receiver": u1}]}
-    ).sort("timestamp", -1).skip(skip).limit(limit))[::-1]  # Reverse for chronological order
+    ).sort("timestamp", -1).skip(skip).limit(limit))[::-1]
 
 def get_group_conversation(group_name, skip=0, limit=50):
     return list(messages_coll.find({"group": group_name}).sort("timestamp", -1).skip(skip).limit(limit))[::-1]
@@ -113,6 +120,10 @@ def edit_message(message_id, sender, new_content):
 def mark_messages_read(username, partner):
     messages_coll.update_many(
         {"sender": partner, "receiver": username, "read": False},
+        {"$set": {"read": True}}
+    )
+    notes_coll.update_many(
+        {"user": username, "msg.sender": partner, "read": False},
         {"$set": {"read": True}}
     )
 
@@ -144,7 +155,6 @@ def get_user_groups(username):
     return list(groups_coll.find({"members": username}))
 
 def user_group_count(username):
-    """Count how many groups the user created"""
     return groups_coll.count_documents({"creator": username})
 
 def create_group(name, creator):

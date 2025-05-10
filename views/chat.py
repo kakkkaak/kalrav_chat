@@ -10,9 +10,9 @@ from datetime import datetime
 
 def show_chat():
     u = st.session_state.username
-    st.title("Chat")
+    st.title("Chat 💬")
 
-    # Initialize session state variables
+    # Initialize session state
     if "chat_mode" not in st.session_state:
         st.session_state.chat_mode = "private"
     if "chat_partner" not in st.session_state:
@@ -24,20 +24,41 @@ def show_chat():
     if "editing_message_id" not in st.session_state:
         st.session_state.editing_message_id = None
 
+    # Secondary sidebar for chat selection
     with st.sidebar:
-        st.subheader("Private")
+        st.subheader("Chats", divider=True)
+        st.markdown("""
+        <style>
+            .chat-button {
+                background: #007bff;
+                color: white;
+                border-radius: 5px;
+                padding: 0.5rem;
+                margin: 0.2rem 0;
+                transition: all 0.3s;
+                width: 100%;
+                text-align: left;
+            }
+            .chat-button:hover {
+                background: #0056b3;
+                transform: translateX(5px);
+            }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("**Private**")
         for other_doc in __import__("database").users_coll.find({"username": {"$ne": u}}):
             other = other_doc["username"]
-            if st.button(other, key=f"chat_user_{other}"):
+            if st.button(other, key=f"chat_user_{other}", help=f"Chat with {other}", use_container_width=True):
                 st.session_state.chat_mode = "private"
                 st.session_state.chat_partner = other
                 st.session_state.message_offset = 0
                 st.session_state.editing_message_id = None
                 st.rerun()
 
-        st.subheader("Groups")
+        st.markdown("**Groups**")
         for grp in get_user_groups(u):
-            if st.button(grp["name"], key=f"chat_group_{grp['name']}"):
+            if st.button(grp["name"], key=f"chat_group_{grp['name']}", help=f"Join {grp['name']}", use_container_width=True):
                 st.session_state.chat_mode = "group"
                 st.session_state.chat_group = grp["name"]
                 st.session_state.message_offset = 0
@@ -54,7 +75,7 @@ def show_chat():
 
         mark_messages_read(u, p)
 
-        search_query = st.text_input("Search messages", key="search_input_private")
+        search_query = st.text_input("Search messages", key="search_input_private", placeholder="Type to search...")
         if search_query:
             messages = search_messages(search_query, u, p=p)
         else:
@@ -67,7 +88,7 @@ def show_chat():
                     if m.get("file_id"):
                         fdoc = get_file(m["file_id"])
                         if fdoc["name"].lower().endswith(".pdf"):
-                            st.write("PDF Attachment")
+                            st.write("📄 PDF Attachment")
                             st.download_button(
                                 label="Download PDF",
                                 data=fdoc["content"],
@@ -90,13 +111,13 @@ def show_chat():
                 else:
                     # Normal display
                     if m.get("edited", False):
-                        st.write("(Edited)")
+                        st.markdown("*(Edited)*")
                     st.write(emoji.emojize(m["content"]))
-                    st.write(f"({m['timestamp'].strftime('%Y-%m-%d %H:%M:%S')})")
+                    st.markdown(f"<small>{m['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}</small>", unsafe_allow_html=True)
                     if m.get("file_id"):
                         fdoc = get_file(m["file_id"])
                         if fdoc["name"].lower().endswith(".pdf"):
-                            st.write("PDF Attachment")
+                            st.write("📄 PDF Attachment")
                             st.download_button(
                                 label="Download PDF",
                                 data=fdoc["content"],
@@ -113,7 +134,7 @@ def show_chat():
                             )
                     if m["sender"] == u:
                         status = "Read" if m.get("read", False) else "Sent"
-                        st.write(f"*{status}*")
+                        st.markdown(f"<small>*{status}*</small>", unsafe_allow_html=True)
                         col1, col2 = st.columns(2)
                         with col1:
                             if st.button("Edit", key=f"edit_btn_{m['_id']}"):
@@ -135,7 +156,7 @@ def show_chat():
             fid = None
             if up:
                 fid = store_file(io.BytesIO(up.getvalue()), up.name)
-            create_message(u, receiver=p, content=txt or "", file_id=fid)
+            create_message(u, receiver=p, content=txt if txt is not None else "", file_id=fid)
             st.rerun()
 
     else:  # Group mode
@@ -144,7 +165,7 @@ def show_chat():
             st.info("Select a group from the sidebar to start chatting")
             return
 
-        search_query = st.text_input("Search messages", key="search_input_group")
+        search_query = st.text_input("Search messages", key="search_input_group", placeholder="Type to search...")
         if search_query:
             messages = search_messages(search_query, u, g=g)
         else:
@@ -157,7 +178,7 @@ def show_chat():
                     if m.get("file_id"):
                         fdoc = get_file(m["file_id"])
                         if fdoc["name"].lower().endswith(".pdf"):
-                            st.write("PDF Attachment")
+                            st.write("📄 PDF Attachment")
                             st.download_button(
                                 label="Download PDF",
                                 data=fdoc["content"],
@@ -180,13 +201,13 @@ def show_chat():
                 else:
                     # Normal display
                     if m.get("edited", False):
-                        st.write("(Edited)")
+                        st.markdown("*(Edited)*")
                     st.write(emoji.emojize(m["content"]))
-                    st.write(f"({m['timestamp'].strftime('%Y-%m-%d %H:%M:%S')})")
+                    st.markdown(f"<small>{m['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}</small>", unsafe_allow_html=True)
                     if m.get("file_id"):
                         fdoc = get_file(m["file_id"])
                         if fdoc["name"].lower().endswith(".pdf"):
-                            st.write("PDF Attachment")
+                            st.write("📄 PDF Attachment")
                             st.download_button(
                                 label="Download PDF",
                                 data=fdoc["content"],
@@ -223,5 +244,5 @@ def show_chat():
             fid = None
             if up:
                 fid = store_file(io.BytesIO(up.getvalue()), up.name)
-            create_message(u, group=g, content=txt or "", file_id=fid)
+            create_message(u, group=g, content=txt if txt is not None else "", file_id=fid)
             st.rerun()
