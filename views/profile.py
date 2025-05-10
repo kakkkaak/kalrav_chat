@@ -8,6 +8,10 @@ def show_profile():
     profile = user["profile"]
     visible_fields = user["visible_fields"]
 
+    # Filter visible_fields to valid options
+    valid_options = ["name", "bio", "display_name", "avatar"]
+    filtered_visible_fields = [f for f in visible_fields if f in valid_options]
+
     with st.form("profile_form"):
         display_name = st.text_input("Display Name", value=profile.get("display_name", profile["name"]))
         avatar = st.selectbox("Avatar", ["👤", "😎", "🚀", "🐱", "🦁"], index=["👤", "😎", "🚀", "🐱", "🦁"].index(profile.get("avatar", "👤")))
@@ -18,8 +22,8 @@ def show_profile():
         
         visible = st.multiselect(
             "Visible Fields",
-            options=["name", "bio", "display_name", "avatar"],
-            default=visible_fields
+            options=valid_options,
+            default=filtered_visible_fields
         )
         
         submitted = st.form_submit_button("Save")
