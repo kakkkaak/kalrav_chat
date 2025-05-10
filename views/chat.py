@@ -25,6 +25,18 @@ def show_chat():
         st.session_state.message_offset = 0
     if "editing_message_id" not in st.session_state:
         st.session_state.editing_message_id = None
+    if "all_users" not in st.session_state:
+        st.session_state.all_users = [doc["username"] for doc in __import__("database").users_coll.find({"username": {"$ne": u}})]
+    if "chatted_users" not in st.session_state:
+        st.session_state.chatted_users = set()
+        messages = __import__("database").messages_coll.find({
+            "$or": [{"sender": u}, {"receiver": u}]
+        })
+        for msg in messages:
+            if msg["sender"] != u:
+                st.session_state.chatted_users.add(msg["sender"])
+            if msg.get("receiver") and msg["receiver"] != u:
+                st.session_state.chatted_users.add(msg["receiver"])
 
     # Secondary sidebar for chat selection
     with st.sidebar:
@@ -59,16 +71,7 @@ def show_chat():
         
         # Show users with existing chats
         st.markdown("**Private**")
-        chatted_users = set()
-        messages = __import__("database").messages_coll.find({
-            "$or": [{"sender": u}, {"receiver": u}]
-        })
-        for msg in messages:
-            if msg["sender"] != u:
-                chatted_users.add(msg["sender"])
-            if msg.get("receiver") and msg["receiver"] != u:
-                chatted_users.add(msg["receiver"])
-        for other in sorted(chatted_users):
+        for other in sorted(st.session_state.chatted_users):
             if st.button(other, key=f"chat_user_{other}", help=f"Chat with {other}", use_container_width=True):
                 st.session_state.chat_mode = "private"
                 st.session_state.chat_partner = other
@@ -76,17 +79,20 @@ def show_chat():
                 st.session_state.editing_message_id = None
                 st.rerun()
 
-        # Dropdown for new chats
+        # Dropdown for new chats with confirmation button
         st.markdown("**Start New Chat**")
-        all_users = [doc["username"] for doc in __import__("database").users_coll.find({"username": {"$ne": u}})]
-        new_users = [user for user in all_users if user not in chatted_users]
-        new_user = st.selectbox("Select user", [""] + new_users, key="new_chat_user")
-        if new_user:
-            st.session_state.chat_mode = "private"
-            st.session_state.chat_partner = new_user
-            st.session_state.message_offset = 0
-            st.session_state.editing_message_id = None
-            st.rerun()
+        new_users = [user for user in st.session_state.all_users if user not in st.session_state.chatted_users]
+        if not new_users:
+            st.info("No new users to chat with.")
+        else:
+            new_user = st.selectbox("Select user", [""] + new_users, key="new_chat_user")
+            if new_user and st.button("Start Chat", key="start_new_chat"):
+                st.session_state.chat_mode = "private"
+                st.session_state.chat_partner = new_user
+                st.session_state.message_offset = 0
+                st.session_state.editing_message_id = None
+                st.session_state.chatted_users.add(new_user)  # Add to chatted users
+                st.rerun()
 
         # Group chats
         st.markdown("**Groups**")
@@ -114,7 +120,7 @@ def show_chat():
         else:
             messages = get_private_conversation(u, p, skip=st.session_state.message_offset, limit=50)
 
-        if not messages and p not in chatted_users:
+        if not messages:
             st.info(f"Start your conversation with {p}!")
         else:
             for m in messages:
@@ -206,6 +212,8 @@ def show_chat():
             if up:
                 fid = store_file(io.BytesIO(up.getvalue()), up.name)
             create_message(u, receiver=p, content=txt if txt is not None else "", file_id=fid)
+            if p not in st.session_state.chatted_users:
+                st.session_state.chatted_users.add(p)
             st.rerun()
 
     else:  # Group mode
