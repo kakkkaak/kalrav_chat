@@ -106,3 +106,13 @@ def create_group(name: str, creator: str):
         "is_public":  False,
         "created_at": datetime.utcnow()
     })
+
+MONGO_URI = os.getenv("MONGO_URI")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
+
+if not MONGO_URI or not MONGO_DB_NAME:
+    raise ValueError("MONGO_URI or MONGO_DB_NAME is not set in the environment variables.")
+
+client = MongoClient(MONGO_URI)
+db = client[MONGO_DB_NAME]
+
