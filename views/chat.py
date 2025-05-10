@@ -3,7 +3,7 @@ from database import (
     get_private_conversation, get_group_conversation,
     create_message, store_file, get_file,
     get_user_groups, delete_message, edit_message,
-    mark_messages_read, search_messages, add_reaction
+    mark_messages_read, search_messages, add_reaction, get_user
 )
 import emoji
 from datetime import datetime

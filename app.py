@@ -1,6 +1,6 @@
 import streamlit as st
 from dotenv import load_dotenv
-from auth import login, logout
+from auth import login, signup, logout
 from database import init_db, get_notifications
 
 # Page config for wide layout and visible sidebar
@@ -107,6 +107,25 @@ st.markdown("""
         box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
 
+    /* Login/Signup form styling */
+    .auth-form {
+        background: #f9f9f9;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        max-width: 400px;
+        margin: 2rem auto;
+        animation: fadeIn 0.5s ease;
+    }
+    .dark .auth-form {
+        background: #333;
+        color: #fff;
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
     /* Hide Streamlit defaults */
     #MainMenu, footer, .stDeployButton { display: none !important; }
 </style>
@@ -122,7 +141,6 @@ st.markdown("""
             document.body.classList.remove('dark');
         }
     }
-    // Apply theme from session state
     applyTheme('%s');
 </script>
 """ % st.session_state.get('theme', 'light'), unsafe_allow_html=True)
@@ -138,9 +156,13 @@ if "display_name" not in st.session_state:
 if "avatar" not in st.session_state:
     st.session_state.avatar = None
 
-# Login check
+# Login/Signup check
 if "username" not in st.session_state:
-    login()
+    auth_choice = st.radio("Choose an option", ["Login", "Sign Up"], horizontal=True)
+    if auth_choice == "Login":
+        login()
+    else:
+        signup()
     st.stop()
 
 # Welcome banner with avatar
@@ -184,7 +206,7 @@ with st.sidebar:
         st.rerun()
 
 # Route to pages
-choice = choice.split(" ")[0]  # Remove notification badge
+choice = choice.split(" ")[0]
 if choice == "Home":
     from views.home import show_home
     show_home()
