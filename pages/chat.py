@@ -9,6 +9,14 @@ def show_chat():
     u = st.session_state.username
     st.title("Chat")
 
+    # Initialize session state variables if they don't exist
+    if "chat_mode" not in st.session_state:
+        st.session_state.chat_mode = "private"
+    if "chat_partner" not in st.session_state:
+        st.session_state.chat_partner = None
+    if "chat_group" not in st.session_state:
+        st.session_state.chat_group = None
+
     with st.sidebar:
         st.subheader("Private")
         for other_doc in __import__("database").users_coll.find({"username": {"$ne": u}}):
@@ -16,16 +24,19 @@ def show_chat():
             if st.button(other, key=f"chat_user_{other}"):
                 st.session_state.chat_mode = "private"
                 st.session_state.chat_partner = other
+                st.rerun()
 
         st.subheader("Groups")
         for grp in get_user_groups(u):
             if st.button(grp["name"], key=f"chat_group_{grp['name']}"):
                 st.session_state.chat_mode = "group"
                 st.session_state.chat_group = grp["name"]
+                st.rerun()
 
-    mode = st.session_state.get("chat_mode", "private")
+    mode = st.session_state.chat_mode
+    
     if mode == "private":
-        p = st.session_state.get("chat_partner")
+        p = st.session_state.chat_partner
         if not p:
             st.info("Select a user from the sidebar to start chatting")
             return
@@ -43,10 +54,10 @@ def show_chat():
             if up:
                 fid = store_file(io.BytesIO(up.getvalue()), up.name)
             create_message(u, receiver=p, content=txt or "", file_id=fid)
-            st.experimental_rerun()
+            st.rerun()
 
     else:  # Group mode
-        g = st.session_state.get("chat_group")
+        g = st.session_state.chat_group
         if not g:
             st.info("Select a group from the sidebar to start chatting")
             return
@@ -64,4 +75,4 @@ def show_chat():
             if up:
                 fid = store_file(io.BytesIO(up.getvalue()), up.name)
             create_message(u, group=g, content=txt or "", file_id=fid)
-            st.experimental_rerun()
+            st.rerun()

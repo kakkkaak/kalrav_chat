@@ -12,6 +12,7 @@ def show_home():
             for n in nots:
                 st.write(f"🎉 From **{n['msg']['sender']}** at {n['ts']}")
             mark_notifications_read(u)
+            st.rerun()  # Updated from st.experimental_rerun()
 
     st.header("Activity")
     if nots:

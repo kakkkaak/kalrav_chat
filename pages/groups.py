@@ -27,7 +27,7 @@ def show_groups():
                 for inv in invitees:
                     invite_user_to_group(name, inv)
                 st.success("Group created & invites sent")
-                st.experimental_rerun()
+                st.rerun()  # Updated from st.experimental_rerun()
             except Exception as e:
                 if "duplicate key error" in str(e).lower():
                     st.error(f"A group with name '{name}' already exists")

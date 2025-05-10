@@ -15,9 +15,16 @@ def login():
                 
             user = get_user(u)
             if user and check_password(user["password_hash"], p):
+                # Set session variables
                 st.session_state.username = u
                 st.session_state.is_admin = user.get("is_admin", False)
-                st.experimental_rerun()
+                
+                # Initialize chat session state variables
+                st.session_state.chat_mode = "private"
+                st.session_state.chat_partner = None
+                st.session_state.chat_group = None
+                
+                st.rerun()
             else:
                 st.error("Invalid credentials")
     else:
