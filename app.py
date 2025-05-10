@@ -6,12 +6,24 @@ from database import init_db
 # Must come first
 st.set_page_config(page_title="Big Boss Chat", layout="wide")
 
-# Hide the top file navigation sidebar
+# Hide the default Streamlit sidebar and navigation
 st.markdown("""
 <style>
+    /* Hide the default sidebar */
+    section[data-testid="stSidebar"] > div:nth-child(2) {
+        display: none;
+    }
+    
+    /* Hide the top file navigation sidebar */
     [data-testid="collapsedControl"] {
         display: none;
     }
+    
+    /* Remove hamburger menu and footer */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    
+    /* Adjust padding */
     .main .block-container {
         padding-top: 2rem;
     }
