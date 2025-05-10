@@ -1,30 +1,26 @@
-/* General styling */
+/* Base styling */
 body {
     font-family: 'Segoe UI', sans-serif;
-    margin: 0;
-    padding: 0;
+    background-color: #f8f9fa;
+    color: #333;
     line-height: 1.6;
-    transition: background-color 0.3s ease, color 0.3s ease;
+    padding: 20px;
 }
 
 /* Header styling */
 h1, h2, h3 {
     color: #0074D9;
+    text-align: center;
     font-weight: bold;
     text-transform: uppercase;
 }
 
-/* Footer styling */
+/* Footer tweaks */
 footer {
     text-align: center;
     padding: 1em;
     color: #888;
     font-size: 0.9em;
-    position: fixed;
-    bottom: 0;
-    width: 100%;
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(5px);
 }
 
 /* Dark mode */
@@ -35,32 +31,30 @@ footer {
     }
     footer {
         color: #bbb;
-        background: rgba(20, 20, 20, 0.5);
     }
 }
 
-/* Interactive enhancements */
-a {
-    color: #0074D9;
-    text-decoration: none;
-    transition: color 0.2s ease-in-out;
-}
-
-a:hover {
-    color: #0056b3;
-}
-
-/* Button improvements */
+/* Smooth button effects */
 button {
     background-color: #0074D9;
     color: white;
     padding: 10px 15px;
-    border: none;
     border-radius: 5px;
+    border: none;
     cursor: pointer;
-    transition: background 0.3s ease-in-out;
+    transition: all 0.3s ease-in-out;
 }
 
 button:hover {
     background-color: #0056b3;
+    transform: scale(1.05);
+}
+
+/* Animated container effect */
+.st-emotion-cache-1 {
+    transition: all 0.3s ease-in-out;
+}
+
+.st-emotion-cache-1:hover {
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
 }
