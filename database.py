@@ -107,6 +107,10 @@ def list_rooms(username):
 def get_user_groups(username):
     return list(groups_coll.find({"members": username}))
 
+def user_group_count(username):
+    """Count how many groups the user created"""
+    return groups_coll.count_documents({"creator": username})
+
 def create_group(name, creator):
     groups_coll.insert_one({
         "name": name,

@@ -10,17 +10,26 @@ def show_groups():
         st.write(f"• {g['name']}")
 
     st.header("Create New Group")
-    name = st.text_input("Group Name")
+    name = st.text_input("Group Name", key="group_name_input")
     invitees = st.multiselect(
         "Invite Users",
-        [usr["username"] for usr in __import__("database").users_coll.find({"username": {"$ne": u}})]
+        [usr["username"] for usr in __import__("database").users_coll.find({"username": {"$ne": u}})],
+        key="group_invitees"
     )
-    if st.button("Create"):
-        if not st.session_state.is_admin and user_group_count(u) >= 1:
+    if st.button("Create", key="create_group_button"):
+        if not name:
+            st.error("Please enter a group name")
+        elif not st.session_state.is_admin and user_group_count(u) >= 1:
             st.error("You can only create one custom group")
         else:
-            create_group(name, u)
-            for inv in invitees:
-                invite_user_to_group(name, inv)
-            st.success("Group created & invites sent")
-            st.experimental_rerun()
+            try:
+                create_group(name, u)
+                for inv in invitees:
+                    invite_user_to_group(name, inv)
+                st.success("Group created & invites sent")
+                st.experimental_rerun()
+            except Exception as e:
+                if "duplicate key error" in str(e).lower():
+                    st.error(f"A group with name '{name}' already exists")
+                else:
+                    st.error(f"Error creating group: {e}")
