@@ -6,6 +6,18 @@ from database import init_db
 # Must come first
 st.set_page_config(page_title="Big Boss Chat", layout="wide")
 
+# Hide the top file navigation sidebar
+st.markdown("""
+<style>
+    [data-testid="collapsedControl"] {
+        display: none;
+    }
+    .main .block-container {
+        padding-top: 2rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 load_dotenv()
 init_db()
 
@@ -19,13 +31,13 @@ if "username" not in st.session_state:
 choice = st.sidebar.radio("Navigation", ["Home", "Chat", "Groups", "Profile"])
 
 if choice == "Home":
-    from pages.home    import show_home
+    from pages.home import show_home
     show_home()
 elif choice == "Chat":
-    from pages.chat    import show_chat
+    from pages.chat import show_chat
     show_chat()
 elif choice == "Groups":
-    from pages.groups  import show_groups
+    from pages.groups import show_groups
     show_groups()
 elif choice == "Profile":
     from pages.profile import show_profile
