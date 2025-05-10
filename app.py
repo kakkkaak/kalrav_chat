@@ -1,7 +1,17 @@
 import streamlit as st
 from dotenv import load_dotenv
-from auth import login
-from database import init_db, get_notifications, get_user
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+
+try:
+    from auth import login
+    from database import init_db, get_notifications, get_user
+except ImportError as e:
+    logging.error(f"Failed to import modules: {e}")
+    st.error(f"Application failed to start: {e}. Please check if database.py exists and is correctly configured.")
+    st.stop()
 
 # Page config for wide layout and visible sidebar
 st.set_page_config(
@@ -144,7 +154,13 @@ st.markdown("""
 """ % (st.session_state.get('theme', 'light'), st.session_state.get('theme', 'light')), unsafe_allow_html=True)
 
 load_dotenv()
-init_db()
+
+try:
+    init_db()
+except Exception as e:
+    logging.error(f"Error initializing database: {e}")
+    st.error(f"Failed to initialize database: {e}")
+    st.stop()
 
 # Initialize session state with defaults
 if "theme" not in st.session_state:
@@ -173,6 +189,7 @@ if "username" in st.session_state:
                 if key in ["username", "display_name", "avatar"]:
                     del st.session_state[key]
     except Exception as e:
+        logging.error(f"Error restoring session: {e}")
         st.error(f"Error restoring session: {e}")
         for key in list(st.session_state.keys()):
             if key in ["username", "display_name", "avatar"]:
@@ -187,12 +204,16 @@ if "username" not in st.session_state:
 username = st.session_state.username
 display_name = st.session_state.display_name or username
 avatar = st.session_state.avatar or "👤"
-st.markdown(f"""
-<div class="welcome-banner">
-    <h2>{avatar} Welcome, {display_name}! 🚀</h2>
-    <p>Ready to dominate the chat? You've got {len(get_notifications(username))} unread messages!</p>
-</div>
-""", unsafe_allow_html=True)
+try:
+    st.markdown(f"""
+    <div class="welcome-banner">
+        <h2>{avatar} Welcome, {display_name}! 🚀</h2>
+        <p>Ready to dominate the chat? You've got {len(get_notifications(username))} unread messages!</p>
+    </div>
+    """, unsafe_allow_html=True)
+except Exception as e:
+    logging.error(f"Error displaying welcome banner: {e}")
+    st.error(f"Error displaying welcome banner: {e}")
 
 # Sidebar with slick menu
 with st.sidebar:
@@ -200,7 +221,11 @@ with st.sidebar:
     st.markdown(f"**{avatar} {display_name}**")
     
     # Navigation with notification badge
-    notifications = len(get_notifications(username))
+    try:
+        notifications = len(get_notifications(username))
+    except Exception as e:
+        logging.error(f"Error fetching notifications: {e}")
+        notifications = 0
     choice = st.radio(
         "Navigate",
         [
@@ -220,25 +245,33 @@ with st.sidebar:
     # Logout button
     st.markdown("---")
     if st.button("Logout", key="logout_btn"):
-        from auth import logout
-        logout()
-        st.session_state.nav_choice = "Home"
-        st.rerun()
+        try:
+            from auth import logout
+            logout()
+            st.session_state.nav_choice = "Home"
+            st.rerun()
+        except Exception as e:
+            logging.error(f"Error during logout: {e}")
+            st.error(f"Error during logout: {e}")
 
 # Route to pages
 choice = choice.split(" ")[0]  # Remove notification badge
-if choice == "Home":
-    from views.home import show_home
-    show_home()
-elif choice == "Chat":
-    from views.chat import show_chat
-    show_chat()
-elif choice == "Groups":
-    from views.groups import show_groups
-    show_groups()
-elif choice == "Profile":
-    from views.profile import show_profile
-    show_profile()
-elif choice == "Settings":
-    from views.settings import show_settings
-    show_settings()
+try:
+    if choice == "Home":
+        from views.home import show_home
+        show_home()
+    elif choice == "Chat":
+        from views.chat import show_chat
+        show_chat()
+    elif choice == "Groups":
+        from views.groups import show_groups
+        show_groups()
+    elif choice == "Profile":
+        from views.profile import show_profile
+        show_profile()
+    elif choice == "Settings":
+        from views.settings import show_settings
+        show_settings()
+except ImportError as e:
+    logging.error(f"Error importing view module: {e}")
+    st.error(f"Failed to load page: {e}")
