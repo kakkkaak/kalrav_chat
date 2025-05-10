@@ -1,5 +1,6 @@
 import streamlit as st
-from database import get_user, update_profile
+from database import get_user, update_profile, delete_user
+from auth import logout
 
 def show_profile():
     st.title("Profile Settings")
@@ -41,3 +42,21 @@ def show_profile():
             st.session_state.display_name = display_name or name
             st.session_state.avatar = avatar
             st.success("Profile updated!")
+
+    # Account deletion
+    st.markdown("---")
+    st.subheader("Delete Account")
+    st.warning("This action is permanent and will delete all your data (messages, groups, etc.).")
+    if st.checkbox("I understand, show delete option"):
+        with st.form("delete_account_form"):
+            confirm = st.text_input("Type your username to confirm", type="password")
+            delete_btn = st.form_submit_button("Delete Account")
+            if delete_btn and confirm == username:
+                if delete_user(username):
+                    logout()
+                    st.success("Account deleted. You have been logged out.")
+                    st.rerun()
+                else:
+                    st.error("Cannot delete admin account.")
+            elif delete_btn:
+                st.error("Username does not match.")

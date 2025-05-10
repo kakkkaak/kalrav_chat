@@ -33,6 +33,7 @@ def init_db():
             "is_admin": True,
             "profile": {"name": admin_u, "bio": "", "pic": None, "show_bio": False, "show_pic": False, "display_name": admin_u, "avatar": "👑"},
             "visible_fields": [],
+            "settings": {"theme": "light", "background_color": "#f0f0f0"},
             "created_at": datetime.utcnow()
         })
 
@@ -56,6 +57,7 @@ def create_user(username, password, profile):
         "is_admin": False,
         "profile": profile,
         "visible_fields": list(profile.keys()),
+        "settings": {"theme": "light", "background_color": "#f0f0f0"},
         "created_at": datetime.utcnow()
     })
 
@@ -72,6 +74,27 @@ def update_profile(username, profile, visible_fields):
         {"username": username},
         {"$set": {"profile": profile, "visible_fields": visible_fields}}
     )
+
+def update_settings(username, settings):
+    users_coll.update_one(
+        {"username": username},
+        {"$set": {"settings": settings}}
+    )
+
+def delete_user(username):
+    # Prevent admin deletion
+    user = users_coll.find_one({"username": username})
+    if user.get("is_admin", False):
+        return False
+    # Delete user data
+    users_coll.delete_one({"username": username})
+    messages_coll.delete_many({"$or": [{"sender": username}, {"receiver": username}]})
+    groups_coll.update_many({"members": username}, {"$pull": {"members": username}})
+    groups_coll.delete_many({"creator": username})
+    invites_coll.delete_many({"$or": [{"invited_user": username}, {"group": {"$in": groups_coll.distinct("name", {"creator": username})}}]})
+    notes_coll.delete_many({"user": username})
+    files_coll.delete_many({"_id": {"$in": messages_coll.distinct("file_id", {"sender": username})}})
+    return True
 
 # File storage
 def store_file(buf: io.BytesIO, name: str) -> str:
@@ -97,9 +120,10 @@ def create_message(sender, receiver=None, group=None, content="", file_id=None):
     if group:
         doc["group"] = group
         group_doc = groups_coll.find_one({"name": group})
-        for member in group_doc["members"]:
-            if member != sender:
-                notes_coll.insert_one({"user": member, "msg": doc, "read": False, "ts": datetime.utcnow()})
+        if group_doc:
+            for member in group_doc["members"]:
+                if member != sender:
+                    notes_coll.insert_one({"user": member, "msg": doc, "read": False, "ts": datetime.utcnow()})
     messages_coll.insert_one(doc)
 
 def get_private_conversation(u1, u2, skip=0, limit=50):

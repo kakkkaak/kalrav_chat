@@ -1,6 +1,6 @@
 import streamlit as st
 from dotenv import load_dotenv
-from auth import login, signup, logout
+from auth import login, logout
 from database import init_db, get_notifications
 
 # Page config for wide layout and visible sidebar
@@ -10,7 +10,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for padding, slick menus, and animations
+# Custom CSS for padding, slick menus, animations, and dynamic background
 st.markdown("""
 <style>
     /* General padding and font */
@@ -20,10 +20,12 @@ st.markdown("""
         border-radius: 10px;
         background: #ffffff;
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        transition: background-color 0.3s ease;
     }
     body {
         font-family: 'Segoe UI', Tahoma, sans-serif;
         transition: all 0.3s ease;
+        background-color: %s !important;
     }
 
     /* Sidebar styling */
@@ -32,6 +34,7 @@ st.markdown("""
         padding: 1.5rem !important;
         border-right: 3px solid #ccc;
         min-width: 250px !important;
+        transition: background-color 0.3s ease;
     }
     [data-testid="stSidebar"] .stRadio > div {
         background: #ffffff;
@@ -42,19 +45,21 @@ st.markdown("""
         transition: transform 0.2s ease;
     }
     [data-testid="stSidebar"] .stRadio > div:hover {
-        transform: scale(1.05);
         background: #007bff;
         color: white;
     }
 
     /* Dark mode */
-    .dark [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #2c2c2c, #3a3a3a);
-        border-right: 3px solid #555;
+    .dark body {
+        background-color: %s !important;
     }
     .dark .main .block-container {
         background: #1e1e1e;
         color: #ffffff;
+    }
+    .dark [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #2c2c2c, #3a3a3a);
+        border-right: 3px solid #555;
     }
     .dark [data-testid="stSidebar"] .stRadio > div {
         background: #444;
@@ -62,6 +67,10 @@ st.markdown("""
     }
     .dark [data-testid="stSidebar"] .stRadio > div:hover {
         background: #0056b3;
+    }
+    .dark .stChatMessage {
+        background: #333;
+        color: #fff;
     }
 
     /* Welcome banner */
@@ -91,10 +100,6 @@ st.markdown("""
         box-shadow: 0 3px 6px rgba(0,0,0,0.1);
         transition: all 0.2s ease;
     }
-    .dark .stChatMessage {
-        background: #333;
-        color: #fff;
-    }
 
     /* Buttons */
     .stButton > button {
@@ -107,43 +112,36 @@ st.markdown("""
         box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
 
-    /* Login/Signup form styling */
-    .auth-form {
-        background: #f9f9f9;
-        padding: 2rem;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        max-width: 400px;
-        margin: 2rem auto;
-        animation: fadeIn 0.5s ease;
-    }
-    .dark .auth-form {
-        background: #333;
-        color: #fff;
-    }
-    @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-    }
-
     /* Hide Streamlit defaults */
     #MainMenu, footer, .stDeployButton { display: none !important; }
 </style>
-""", unsafe_allow_html=True)
+""" % (st.session_state.get('background_color', '#f0f0f0'), 
+       st.session_state.get('background_color', '#1e1e1e') if st.session_state.get('theme', 'light') == 'dark' else '#1e1e1e'), 
+       unsafe_allow_html=True)
 
 # JavaScript for dark mode toggle
 st.markdown("""
 <script>
     function applyTheme(theme) {
+        const body = document.body;
         if (theme === 'dark') {
-            document.body.classList.add('dark');
+            body.classList.add('dark');
         } else {
-            document.body.classList.remove('dark');
+            body.classList.remove('dark');
         }
+        // Force repaint
+        body.style.display = 'none';
+        body.offsetHeight; // Trigger reflow
+        body.style.display = '';
     }
+    // Apply theme on load
+    document.addEventListener('DOMContentLoaded', () => {
+        applyTheme('%s');
+    });
+    // Re-apply theme on change
     applyTheme('%s');
 </script>
-""" % st.session_state.get('theme', 'light'), unsafe_allow_html=True)
+""" % (st.session_state.get('theme', 'light'), st.session_state.get('theme', 'light')), unsafe_allow_html=True)
 
 load_dotenv()
 init_db()
@@ -151,18 +149,16 @@ init_db()
 # Initialize session state
 if "theme" not in st.session_state:
     st.session_state.theme = "light"
+if "background_color" not in st.session_state:
+    st.session_state.background_color = "#f0f0f0"  # Default light background
 if "display_name" not in st.session_state:
     st.session_state.display_name = None
 if "avatar" not in st.session_state:
     st.session_state.avatar = None
 
-# Login/Signup check
+# Login check
 if "username" not in st.session_state:
-    auth_choice = st.radio("Choose an option", ["Login", "Sign Up"], horizontal=True)
-    if auth_choice == "Login":
-        login()
-    else:
-        signup()
+    login()
     st.stop()
 
 # Welcome banner with avatar
@@ -189,24 +185,20 @@ with st.sidebar:
             "Home",
             f"Chat {'🔔' + str(notifications) if notifications > 0 else ''}",
             "Groups",
-            "Profile"
+            "Profile",
+            "Settings"
         ],
         key="nav_radio"
     )
     
-    # Theme toggle and logout
+    # Logout button
     st.markdown("---")
-    theme = st.selectbox("Theme", ["Light", "Dark"], index=0 if st.session_state.theme == "light" else 1, key="theme_select")
-    if theme.lower() != st.session_state.theme:
-        st.session_state.theme = theme.lower()
-        st.rerun()
-    
     if st.button("Logout", key="logout_btn"):
         logout()
         st.rerun()
 
 # Route to pages
-choice = choice.split(" ")[0]
+choice = choice.split(" ")[0]  # Remove notification badge
 if choice == "Home":
     from views.home import show_home
     show_home()
@@ -219,3 +211,6 @@ elif choice == "Groups":
 elif choice == "Profile":
     from views.profile import show_profile
     show_profile()
+elif choice == "Settings":
+    from views.settings import show_settings
+    show_settings()
