@@ -3,14 +3,16 @@ from database import (
     get_private_conversation, get_group_conversation,
     create_message, store_file, get_file,
     get_user_groups, delete_message, edit_message,
-    mark_messages_read, search_messages
+    mark_messages_read, search_messages, add_reaction
 )
 import emoji
 from datetime import datetime
 
 def show_chat():
     u = st.session_state.username
-    st.title("Chat 💬")
+    display_name = st.session_state.display_name or u
+    avatar = st.session_state.avatar or "👤"
+    st.title(f"{avatar} Chat 💬")
 
     # Initialize session state
     if "chat_mode" not in st.session_state:
@@ -30,18 +32,27 @@ def show_chat():
         st.markdown("""
         <style>
             .chat-button {
-                background: #007bff;
-                color: white;
-                border-radius: 5px;
-                padding: 0.5rem;
-                margin: 0.2rem 0;
-                transition: all 0.3s;
+                background: linear-gradient(90deg, #007bff, #00d4ff);
+                color: white !important;
+                border-radius: 8px;
+                padding: 0.6rem !important;
+                margin: 0.3rem 0;
+                transition: all 0.3s ease;
                 width: 100%;
                 text-align: left;
+                border: none;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
             }
             .chat-button:hover {
-                background: #0056b3;
+                background: linear-gradient(90deg, #0056b3, #00aaff);
                 transform: translateX(5px);
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            }
+            .dark .chat-button {
+                background: linear-gradient(90deg, #444, #666);
+            }
+            .dark .chat-button:hover {
+                background: linear-gradient(90deg, #333, #555);
             }
         </style>
         """, unsafe_allow_html=True)
@@ -75,7 +86,7 @@ def show_chat():
 
         mark_messages_read(u, p)
 
-        search_query = st.text_input("Search messages", key="search_input_private", placeholder="Type to search...")
+        search_query = st.text_input("Search messages", key="search_input_private", placeholder="🔍 Type to search...")
         if search_query:
             messages = search_messages(search_query, u, p=p)
         else:
@@ -83,6 +94,8 @@ def show_chat():
 
         for m in messages:
             with st.chat_message("user" if m["sender"] == u else "assistant"):
+                sender_display = get_user(m["sender"])["profile"].get("display_name", m["sender"])
+                st.markdown(f"**{sender_display}**")
                 if st.session_state.editing_message_id == str(m["_id"]):
                     # Editing mode
                     if m.get("file_id"):
@@ -132,10 +145,12 @@ def show_chat():
                                 file_name=fdoc["name"],
                                 mime="image/jpeg"
                             )
+                    if m.get("reactions"):
+                        st.markdown(" ".join(f"{r} {c}" for r, c in m["reactions"].items()))
                     if m["sender"] == u:
                         status = "Read" if m.get("read", False) else "Sent"
                         st.markdown(f"<small>*{status}*</small>", unsafe_allow_html=True)
-                        col1, col2 = st.columns(2)
+                        col1, col2, col3 = st.columns([1, 1, 2])
                         with col1:
                             if st.button("Edit", key=f"edit_btn_{m['_id']}"):
                                 st.session_state.editing_message_id = str(m["_id"])
@@ -143,6 +158,11 @@ def show_chat():
                         with col2:
                             if st.button("Delete", key=f"delete_btn_{m['_id']}"):
                                 delete_message(str(m["_id"]), u)
+                                st.rerun()
+                        with col3:
+                            reaction = st.selectbox("React", ["", "👍", "❤️", "😂"], key=f"react_{m['_id']}")
+                            if reaction:
+                                add_reaction(str(m["_id"]), u, reaction)
                                 st.rerun()
 
         if not search_query and len(messages) == 50:
@@ -165,7 +185,7 @@ def show_chat():
             st.info("Select a group from the sidebar to start chatting")
             return
 
-        search_query = st.text_input("Search messages", key="search_input_group", placeholder="Type to search...")
+        search_query = st.text_input("Search messages", key="search_input_group", placeholder="🔍 Type to search...")
         if search_query:
             messages = search_messages(search_query, u, g=g)
         else:
@@ -173,6 +193,8 @@ def show_chat():
 
         for m in messages:
             with st.chat_message("user" if m["sender"] == u else "assistant"):
+                sender_display = get_user(m["sender"])["profile"].get("display_name", m["sender"])
+                st.markdown(f"**{sender_display}**")
                 if st.session_state.editing_message_id == str(m["_id"]):
                     # Editing mode
                     if m.get("file_id"):
@@ -222,8 +244,10 @@ def show_chat():
                                 file_name=fdoc["name"],
                                 mime="image/jpeg"
                             )
+                    if m.get("reactions"):
+                        st.markdown(" ".join(f"{r} {c}" for r, c in m["reactions"].items()))
                     if m["sender"] == u:
-                        col1, col2 = st.columns(2)
+                        col1, col2, col3 = st.columns([1, 1, 2])
                         with col1:
                             if st.button("Edit", key=f"edit_btn_{m['_id']}"):
                                 st.session_state.editing_message_id = str(m["_id"])
@@ -231,6 +255,11 @@ def show_chat():
                         with col2:
                             if st.button("Delete", key=f"delete_btn_{m['_id']}"):
                                 delete_message(str(m["_id"]), u)
+                                st.rerun()
+                        with col3:
+                            reaction = st.selectbox("React", ["", "👍", "❤️", "😂"], key=f"react_{m['_id']}")
+                            if reaction:
+                                add_reaction(str(m["_id"]), u, reaction)
                                 st.rerun()
 
         if not search_query and len(messages) == 50:

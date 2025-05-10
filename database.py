@@ -31,7 +31,7 @@ def init_db():
             "username": admin_u,
             "password_hash": bcrypt.hash(admin_p),
             "is_admin": True,
-            "profile": {"name": admin_u, "bio": "", "pic": None, "show_bio": False, "show_pic": False, "display_name": admin_u},
+            "profile": {"name": admin_u, "bio": "", "pic": None, "show_bio": False, "show_pic": False, "display_name": admin_u, "avatar": "👑"},
             "visible_fields": [],
             "created_at": datetime.utcnow()
         })
@@ -48,7 +48,8 @@ def init_db():
 # User management
 def create_user(username, password, profile):
     pw = bcrypt.hash(password)
-    profile["display_name"] = profile.get("name", username)
+    profile["display_name"] = profile.get("display_name", profile.get("name", username))
+    profile["avatar"] = profile.get("avatar", "👤")
     users_coll.insert_one({
         "username": username,
         "password_hash": pw,
@@ -66,6 +67,7 @@ def check_password(h, p):
 
 def update_profile(username, profile, visible_fields):
     profile["display_name"] = profile.get("display_name", profile.get("name", username))
+    profile["avatar"] = profile.get("avatar", "👤")
     users_coll.update_one(
         {"username": username},
         {"$set": {"profile": profile, "visible_fields": visible_fields}}
@@ -86,14 +88,14 @@ def create_message(sender, receiver=None, group=None, content="", file_id=None):
         "content": content,
         "timestamp": datetime.utcnow(),
         "file_id": file_id,
-        "read": False
+        "read": False,
+        "reactions": {}
     }
     if receiver:
         doc["receiver"] = receiver
         notes_coll.insert_one({"user": receiver, "msg": doc, "read": False, "ts": datetime.utcnow()})
     if group:
         doc["group"] = group
-        # Notify group members except sender
         group_doc = groups_coll.find_one({"name": group})
         for member in group_doc["members"]:
             if member != sender:
@@ -125,6 +127,12 @@ def mark_messages_read(username, partner):
     notes_coll.update_many(
         {"user": username, "msg.sender": partner, "read": False},
         {"$set": {"read": True}}
+    )
+
+def add_reaction(message_id, username, reaction):
+    messages_coll.update_one(
+        {"_id": ObjectId(message_id)},
+        {"$inc": {f"reactions.{reaction}": 1}}
     )
 
 def search_messages(query, username, p=None, g=None):

@@ -12,6 +12,7 @@ def login():
             if user and check_password(user["password_hash"], password):
                 st.session_state.username = username
                 st.session_state.display_name = user["profile"].get("display_name", username)
+                st.session_state.avatar = user["profile"].get("avatar", "👤")
                 st.success("Logged in!")
                 st.rerun()
             else:
@@ -23,18 +24,26 @@ def signup():
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
         display_name = st.text_input("Display Name (optional)")
+        avatar = st.selectbox("Avatar", ["👤", "😎", "🚀", "🐱", "🦁"], index=0)
         submitted = st.form_submit_button("Sign Up")
         if submitted:
             if get_user(username):
                 st.error("Username already exists")
             else:
-                profile = {"name": username, "bio": "", "pic": None, "show_bio": False, "show_pic": False}
-                if display_name:
-                    profile["display_name"] = display_name
+                profile = {
+                    "name": username,
+                    "bio": "",
+                    "pic": None,
+                    "show_bio": False,
+                    "show_pic": False,
+                    "display_name": display_name or username,
+                    "avatar": avatar
+                }
                 create_user(username, password, profile)
                 st.success("Account created! Please log in.")
                 st.session_state.username = username
                 st.session_state.display_name = display_name or username
+                st.session_state.avatar = avatar
                 st.rerun()
 
 def logout():
