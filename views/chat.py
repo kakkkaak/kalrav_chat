@@ -91,7 +91,7 @@ def show_chat():
                     # Normal display
                     if m.get("edited", False):
                         st.write("(Edited)")
-                    st.write(emoji.emojize(m["content"], use_aliases=True))
+                    st.write(emoji.emojize(m["content"]))
                     st.write(f"({m['timestamp'].strftime('%Y-%m-%d %H:%M:%S')})")
                     if m.get("file_id"):
                         fdoc = get_file(m["file_id"])
@@ -181,7 +181,7 @@ def show_chat():
                     # Normal display
                     if m.get("edited", False):
                         st.write("(Edited)")
-                    st.write(emoji.emojize(m["content"], use_aliases=True))
+                    st.write(emoji.emojize(m["content"]))
                     st.write(f"({m['timestamp'].strftime('%Y-%m-%d %H:%M:%S')})")
                     if m.get("file_id"):
                         fdoc = get_file(m["file_id"])
