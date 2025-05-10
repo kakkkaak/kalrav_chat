@@ -90,7 +90,7 @@ def create_message(sender, receiver=None, group=None, content="", file_id=None):
         doc["receiver"] = receiver
         notes_coll.insert_one({"user": receiver, "msg": doc, "read": False, "ts": datetime.utcnow()})
     if group:
-        doc["group": group]
+        doc["group"] = group
     messages_coll.insert_one(doc)
 
 def get_private_conversation(u1, u2, skip=0, limit=50):
